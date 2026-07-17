@@ -203,7 +203,10 @@ function Jarvis() {
           {speech.supported && (
             <button
               type="button"
-              onClick={speech.listening ? speech.stop : speech.start}
+              onClick={() => {
+                void primeAudio();
+                speech.listening ? speech.stop() : speech.start();
+              }}
               disabled={loading}
               aria-label={speech.listening ? "Parar" : "Falar"}
               className={cn(
