@@ -35,14 +35,12 @@ export const askJarvis = createServerFn({ method: "POST" })
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
     const gateway = createLovableAiGatewayProvider(key);
-    const messages: ModelMessage[] = [
-      { role: "system", content: SYSTEM_PROMPT },
-      ...data.messages.map((m) => ({ role: m.role, content: m.content })),
-    ];
+    const messages: ModelMessage[] = data.messages.map((m) => ({ role: m.role, content: m.content }));
 
     try {
       const { text } = await generateText({
         model: gateway("google/gemini-3-flash-preview"),
+        system: SYSTEM_PROMPT,
         messages,
       });
       return { text };
