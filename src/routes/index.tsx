@@ -64,6 +64,7 @@ function Jarvis() {
     async (text: string) => {
       const clean = text.trim();
       if (!clean || loading) return;
+      void primeAudio();
       cancelSpeech();
       setSpeaking(false);
       const next: Msg[] = [...messages, { role: "user", content: clean }];
@@ -74,7 +75,7 @@ function Jarvis() {
         const { text: reply } = await ask({ data: { messages: next } });
         setMessages((m) => [...m, { role: "assistant", content: reply }]);
         if (voiceOn) {
-          speak(reply, {
+          void speak(reply, {
             onStart: () => setSpeaking(true),
             onEnd: () => setSpeaking(false),
           });
