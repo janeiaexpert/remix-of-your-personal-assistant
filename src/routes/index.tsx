@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
 import { Mic, MicOff, Send, Volume2, VolumeX, Trash2 } from "lucide-react";
 import { askJarvis } from "@/lib/jarvis.functions";
-import { useSpeech, speak, cancelSpeech } from "@/lib/speech";
+import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -64,6 +64,7 @@ function Jarvis() {
     async (text: string) => {
       const clean = text.trim();
       if (!clean || loading) return;
+      void primeAudio();
       cancelSpeech();
       setSpeaking(false);
       const next: Msg[] = [...messages, { role: "user", content: clean }];
@@ -74,7 +75,7 @@ function Jarvis() {
         const { text: reply } = await ask({ data: { messages: next } });
         setMessages((m) => [...m, { role: "assistant", content: reply }]);
         if (voiceOn) {
-          speak(reply, {
+          void speak(reply, {
             onStart: () => setSpeaking(true),
             onEnd: () => setSpeaking(false),
           });
@@ -202,7 +203,10 @@ function Jarvis() {
           {speech.supported && (
             <button
               type="button"
-              onClick={speech.listening ? speech.stop : speech.start}
+              onClick={() => {
+                void primeAudio();
+                speech.listening ? speech.stop() : speech.start();
+              }}
               disabled={loading}
               aria-label={speech.listening ? "Parar" : "Falar"}
               className={cn(
