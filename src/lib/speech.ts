@@ -82,45 +82,128 @@ export function useSpeech(onFinal: (text: string) => void) {
   return { listening, interim, supported, start, stop };
 }
 
-let cachedVoice: SpeechSynthesisVoice | null = null;
-function pickPtVoice(): SpeechSynthesisVoice | null {
-  if (cachedVoice) return cachedVoice;
+// ------- Server-side TTS playback (Lovable AI, PCM stream) -------
+
+import { createParser } from "eventsource-parser";
+
+let audioCtx: AudioContext | null = null;
+let currentAbort: AbortController | null = null;
+
+function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
-  const voices = window.speechSynthesis.getVoices();
-  const pt = voices.find((v) => /pt[-_]BR/i.test(v.lang)) ??
-    voices.find((v) => v.lang?.toLowerCase().startsWith("pt")) ?? null;
-  if (pt) cachedVoice = pt;
-  return pt;
+  const Ctor =
+    window.AudioContext ??
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return null;
+  if (!audioCtx) audioCtx = new Ctor({ sampleRate: 24000 });
+  return audioCtx;
 }
 
-export function speak(text: string, opts: { onStart?: () => void; onEnd?: () => void } = {}) {
-  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-    opts.onEnd?.();
-    return;
+/** Call inside a user gesture (click) to unlock audio playback. */
+export async function primeAudio() {
+  const ctx = getCtx();
+  if (ctx && ctx.state === "suspended") {
+    await ctx.resume().catch(() => {});
   }
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = "pt-BR";
-  u.rate = 1.02;
-  u.pitch = 0.85;
-  const v = pickPtVoice();
-  if (v) u.voice = v;
-  u.onstart = () => opts.onStart?.();
-  u.onend = () => opts.onEnd?.();
-  u.onerror = () => opts.onEnd?.();
-  window.speechSynthesis.speak(u);
 }
 
 export function cancelSpeech() {
-  if (typeof window !== "undefined" && "speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
+  if (currentAbort) {
+    currentAbort.abort();
+    currentAbort = null;
   }
 }
 
-// Warm up voice list
-if (typeof window !== "undefined" && "speechSynthesis" in window) {
-  window.speechSynthesis.onvoiceschanged = () => {
-    cachedVoice = null;
-    pickPtVoice();
+export async function speak(
+  text: string,
+  opts: { onStart?: () => void; onEnd?: () => void } = {},
+) {
+  const ctx = getCtx();
+  if (!ctx || !text.trim()) {
+    opts.onEnd?.();
+    return;
+  }
+  cancelSpeech();
+  const abort = new AbortController();
+  currentAbort = abort;
+
+  if (ctx.state === "suspended") {
+    await ctx.resume().catch(() => {});
+  }
+
+  let playhead = 0;
+  let pending = new Uint8Array(0);
+  let started = false;
+  let lastEndTime = 0;
+
+  const playChunk = (incoming: Uint8Array) => {
+    const bytes = new Uint8Array(pending.length + incoming.length);
+    bytes.set(pending);
+    bytes.set(incoming, pending.length);
+    const usable = bytes.length - (bytes.length % 2);
+    pending = bytes.slice(usable);
+    if (usable === 0) return;
+    const samples = new Int16Array(bytes.buffer, 0, usable / 2);
+    const floats = Float32Array.from(samples, (s) => s / 32768);
+    const buffer = ctx.createBuffer(1, floats.length, 24000);
+    buffer.copyToChannel(floats, 0);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(ctx.destination);
+    if (playhead === 0) playhead = ctx.currentTime + 0.08;
+    else playhead = Math.max(playhead, ctx.currentTime);
+    source.start(playhead);
+    playhead += buffer.duration;
+    lastEndTime = playhead;
+    if (!started) {
+      started = true;
+      opts.onStart?.();
+    }
   };
+
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      signal: abort.signal,
+    });
+    if (!res.ok || !res.body) {
+      console.error("TTS failed", res.status, await res.text().catch(() => ""));
+      opts.onEnd?.();
+      return;
+    }
+    const parser = createParser({
+      onEvent(event) {
+        let payload: { type: string; audio?: string };
+        try {
+          payload = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (payload.type !== "speech.audio.delta" || !payload.audio) return;
+        const binary = atob(payload.audio);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        playChunk(bytes);
+      },
+    });
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) parser.feed(value);
+    }
+    // Schedule onEnd right after last buffer finishes
+    const remaining = Math.max(0, lastEndTime - ctx.currentTime);
+    window.setTimeout(() => opts.onEnd?.(), remaining * 1000 + 50);
+  } catch (err) {
+    if ((err as { name?: string })?.name !== "AbortError") {
+      console.error("TTS error", err);
+    }
+    opts.onEnd?.();
+  } finally {
+    if (currentAbort === abort) currentAbort = null;
+  }
 }
+
