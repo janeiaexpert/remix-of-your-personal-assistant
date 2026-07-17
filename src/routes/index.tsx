@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
 import { Mic, MicOff, Send, Volume2, VolumeX, Trash2 } from "lucide-react";
 import { askJarvis } from "@/lib/jarvis.functions";
-import { useSpeech, speak, cancelSpeech } from "@/lib/speech";
+import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
