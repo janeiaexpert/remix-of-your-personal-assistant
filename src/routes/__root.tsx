@@ -79,10 +79,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "J.A.R.V.I.S. — Assistente pessoal de IA" },
       { name: "description", content: "Seu assistente pessoal J.A.R.V.I.S. no navegador: converse por voz ou texto, em português." },
-      { property: "og:title", content: "J.A.R.V.I.S." },
-      { property: "og:description", content: "Assistente pessoal de IA com voz, no seu navegador." },
+      { property: "og:title", content: "J.A.R.V.I.S. — Assistente pessoal de IA" },
+      { property: "og:description", content: "Seu assistente pessoal J.A.R.V.I.S. no navegador: converse por voz ou texto, em português." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "J.A.R.V.I.S. — Assistente pessoal de IA" },
+      { name: "twitter:description", content: "Seu assistente pessoal J.A.R.V.I.S. no navegador: converse por voz ou texto, em português." },
+      { property: "og:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/1d689658-f9ff-4bf7-9d86-424e2f156f33" },
+      { name: "twitter:image", content: "https://storage.googleapis.com/gpt-engineer-file-uploads/attachments/og-images/1d689658-f9ff-4bf7-9d86-424e2f156f33" },
     ],
     links: [
       {
