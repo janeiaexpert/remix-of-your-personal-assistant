@@ -1,5 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
-import { generateText, type ModelMessage } from "ai";
+import { generateText, stepCountIs, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
 
@@ -28,12 +28,77 @@ Regras:
 - Só se estenda quando o assunto realmente exigir.
 - Não use listas nem markdown pesado a menos que ajude de verdade.
 - Nunca revele que é um modelo de linguagem; você é o J.A.R.V.I.S.
-- Use naturalmente o que você já sabe sobre o usuário (memória de longo prazo) sem anunciar "de acordo com minha memória".`;
+- Use naturalmente o que você já sabe sobre o usuário (memória de longo prazo) sem anunciar "de acordo com minha memória".
+
+Ferramentas:
+- Você tem uma ferramenta \`web_search\` para consultar a internet em tempo real.
+- USE quando o usuário perguntar sobre: notícias, cotações, clima, esportes, eventos recentes, pessoas/empresas atuais, preços, resultados, ou qualquer fato que possa ter mudado após seu treinamento.
+- NÃO use para conhecimento geral estável, matemática, código, opinião, ou small talk.
+- Depois de buscar, sintetize a resposta em 1-3 frases no seu estilo. Não despeje URLs a menos que o usuário peça a fonte.`;
 
 function buildSystem(memories: string[]): string {
   if (!memories.length) return BASE_PROMPT;
   const list = memories.map((m, i) => `${i + 1}. ${m}`).join("\n");
   return `${BASE_PROMPT}\n\nMemória de longo prazo sobre o usuário (fatos duradouros que você aprendeu em conversas anteriores):\n${list}`;
+}
+
+// ---------------------------------------------------------------------------
+// Free web search via DuckDuckGo HTML endpoint. No API key required.
+// ---------------------------------------------------------------------------
+
+type SearchHit = { title: string; url: string; snippet: string };
+
+function decodeHtml(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(parseInt(n, 10)));
+}
+function stripTags(s: string): string {
+  return decodeHtml(s.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
+}
+function unwrapDdgUrl(href: string): string {
+  try {
+    // DDG wraps results in /l/?uddg=<encoded>
+    const m = href.match(/[?&]uddg=([^&]+)/);
+    if (m) return decodeURIComponent(m[1]);
+    if (href.startsWith("//")) return "https:" + href;
+    return href;
+  } catch {
+    return href;
+  }
+}
+
+async function duckDuckGoSearch(query: string, maxResults = 5): Promise<SearchHit[]> {
+  const res = await fetch("https://html.duckduckgo.com/html/", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "User-Agent":
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36",
+      "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    },
+    body: new URLSearchParams({ q: query, kl: "br-pt" }).toString(),
+  });
+  if (!res.ok) throw new Error(`DuckDuckGo ${res.status}`);
+  const html = await res.text();
+
+  const hits: SearchHit[] = [];
+  const resultRegex =
+    /<a[^>]*class="[^"]*result__a[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<a[^>]*class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/a>/g;
+  let m: RegExpExecArray | null;
+  while ((m = resultRegex.exec(html)) && hits.length < maxResults) {
+    const url = unwrapDdgUrl(m[1]);
+    const title = stripTags(m[2]);
+    const snippet = stripTags(m[3]);
+    if (url && title) hits.push({ title, url, snippet });
+  }
+  return hits;
 }
 
 export const askJarvis = createServerFn({ method: "POST" })
@@ -45,11 +110,33 @@ export const askJarvis = createServerFn({ method: "POST" })
     const gateway = createLovableAiGatewayProvider(key);
     const messages: ModelMessage[] = data.messages.map((m) => ({ role: m.role, content: m.content }));
 
+    const webSearch = tool({
+      description:
+        "Busca na web em tempo real via DuckDuckGo. Use para notícias, cotações, clima, esportes, eventos recentes ou qualquer fato que possa ter mudado. Retorna até 5 resultados com título, URL e snippet.",
+      inputSchema: z.object({
+        query: z.string().min(2).describe("Consulta de busca, otimizada para um motor de busca."),
+      }),
+      execute: async ({ query }) => {
+        try {
+          const results = await duckDuckGoSearch(query, 5);
+          if (!results.length) return { results: [], note: "Nenhum resultado encontrado." };
+          return { results };
+        } catch (err) {
+          return {
+            results: [],
+            error: err instanceof Error ? err.message : "Falha na busca.",
+          };
+        }
+      },
+    });
+
     try {
       const { text } = await generateText({
         model: gateway("google/gemini-3-flash-preview"),
         system: buildSystem(data.memories),
         messages,
+        tools: { web_search: webSearch },
+        stopWhen: stepCountIs(5),
       });
       return { text };
     } catch (err) {
