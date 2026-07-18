@@ -219,11 +219,35 @@ function Jarvis() {
             >
               {voiceOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </IconButton>
+            <IconButton
+              title={`Memória (${memories.length})`}
+              onClick={() => setMemoryOpen((o) => !o)}
+              active={memoryOpen || memories.length > 0}
+            >
+              <Brain size={16} />
+            </IconButton>
             <IconButton title="Limpar conversa" onClick={clearConversation}>
               <Trash2 size={16} />
             </IconButton>
           </div>
         </header>
+
+        {memoryOpen && (
+          <MemoryPanel
+            memories={memories}
+            newMemory={newMemory}
+            setNewMemory={setNewMemory}
+            onAdd={() => {
+              const v = newMemory.trim();
+              if (!v) return;
+              setMemories((prev) => mergeMemories(prev, [v]));
+              setNewMemory("");
+            }}
+            onRemove={(idx) => setMemories((prev) => prev.filter((_, i) => i !== idx))}
+            onClear={() => setMemories([])}
+            onClose={() => setMemoryOpen(false)}
+          />
+        )}
 
         {/* Central reactor */}
         <div className="my-6 flex justify-center">
