@@ -2,17 +2,47 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
-import { Mic, MicOff, Send, Volume2, VolumeX, Trash2 } from "lucide-react";
-import { askJarvis } from "@/lib/jarvis.functions";
+import { Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus } from "lucide-react";
+import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
 const STORAGE_KEY = "jarvis:conversation:v1";
+const MEMORY_KEY = "jarvis:memories:v1";
+const MAX_MEMORIES = 60;
 const GREETING: Msg = {
   role: "assistant",
   content: "Sistemas online. Ao seu dispor, senhor. Em que posso ajudá-lo?",
 };
+
+function loadMemories(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MEMORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((m): m is string => typeof m === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalize(s: string) {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+function mergeMemories(existing: string[], incoming: string[]): string[] {
+  const seen = new Set(existing.map(normalize));
+  const merged = [...existing];
+  for (const m of incoming) {
+    const n = normalize(m);
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      merged.push(m);
+    }
+  }
+  return merged.slice(-MAX_MEMORIES);
+}
 
 export const Route = createFileRoute("/")({ component: Jarvis });
 
