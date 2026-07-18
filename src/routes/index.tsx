@@ -60,18 +60,26 @@ function loadMessages(): Msg[] {
 
 function Jarvis() {
   const ask = useServerFn(askJarvis);
+  const extract = useServerFn(extractMemories);
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
+  const [memories, setMemories] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [newMemory, setNewMemory] = useState("");
+  const memoriesRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { memoriesRef.current = memories; }, [memories]);
 
   // Hydrate from localStorage
   useEffect(() => {
     setMessages(loadMessages());
+    setMemories(loadMemories());
     setHydrated(true);
   }, []);
 
@@ -81,6 +89,13 @@ function Jarvis() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
     } catch { /* quota */ }
   }, [messages, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(MEMORY_KEY, JSON.stringify(memories));
+    } catch { /* quota */ }
+  }, [memories, hydrated]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -102,7 +117,8 @@ function Jarvis() {
       setInput("");
       setLoading(true);
       try {
-        const { text: reply } = await ask({ data: { messages: next } });
+        const currentMemories = memoriesRef.current;
+        const { text: reply } = await ask({ data: { messages: next, memories: currentMemories } });
         setMessages((m) => [...m, { role: "assistant", content: reply }]);
         if (voiceOn) {
           void speak(reply, {
@@ -110,6 +126,14 @@ function Jarvis() {
             onEnd: () => setSpeaking(false),
           });
         }
+        // Fire-and-forget memory extraction; never blocks the reply.
+        void extract({
+          data: { userMessage: clean, assistantMessage: reply, existingMemories: currentMemories },
+        })
+          .then(({ memories: found }) => {
+            if (found.length) setMemories((prev) => mergeMemories(prev, found));
+          })
+          .catch(() => { /* silent */ });
       } catch (err) {
         console.error(err);
         setMessages((m) => [
@@ -121,8 +145,9 @@ function Jarvis() {
         setTimeout(() => inputRef.current?.focus(), 0);
       }
     },
-    [ask, loading, messages, voiceOn],
+    [ask, extract, loading, messages, voiceOn],
   );
+
 
   const speech = useSpeech((finalText) => {
     void send(finalText);
