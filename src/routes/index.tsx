@@ -2,17 +2,47 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
-import { Mic, MicOff, Send, Volume2, VolumeX, Trash2 } from "lucide-react";
-import { askJarvis } from "@/lib/jarvis.functions";
+import { Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus } from "lucide-react";
+import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
 const STORAGE_KEY = "jarvis:conversation:v1";
+const MEMORY_KEY = "jarvis:memories:v1";
+const MAX_MEMORIES = 60;
 const GREETING: Msg = {
   role: "assistant",
   content: "Sistemas online. Ao seu dispor, senhor. Em que posso ajudá-lo?",
 };
+
+function loadMemories(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(MEMORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((m): m is string => typeof m === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalize(s: string) {
+  return s.toLowerCase().replace(/\s+/g, " ").trim();
+}
+function mergeMemories(existing: string[], incoming: string[]): string[] {
+  const seen = new Set(existing.map(normalize));
+  const merged = [...existing];
+  for (const m of incoming) {
+    const n = normalize(m);
+    if (n && !seen.has(n)) {
+      seen.add(n);
+      merged.push(m);
+    }
+  }
+  return merged.slice(-MAX_MEMORIES);
+}
 
 export const Route = createFileRoute("/")({ component: Jarvis });
 
@@ -30,18 +60,26 @@ function loadMessages(): Msg[] {
 
 function Jarvis() {
   const ask = useServerFn(askJarvis);
+  const extract = useServerFn(extractMemories);
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
+  const [memories, setMemories] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voiceOn, setVoiceOn] = useState(true);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const [newMemory, setNewMemory] = useState("");
+  const memoriesRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { memoriesRef.current = memories; }, [memories]);
 
   // Hydrate from localStorage
   useEffect(() => {
     setMessages(loadMessages());
+    setMemories(loadMemories());
     setHydrated(true);
   }, []);
 
@@ -51,6 +89,13 @@ function Jarvis() {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
     } catch { /* quota */ }
   }, [messages, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      window.localStorage.setItem(MEMORY_KEY, JSON.stringify(memories));
+    } catch { /* quota */ }
+  }, [memories, hydrated]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -72,7 +117,8 @@ function Jarvis() {
       setInput("");
       setLoading(true);
       try {
-        const { text: reply } = await ask({ data: { messages: next } });
+        const currentMemories = memoriesRef.current;
+        const { text: reply } = await ask({ data: { messages: next, memories: currentMemories } });
         setMessages((m) => [...m, { role: "assistant", content: reply }]);
         if (voiceOn) {
           void speak(reply, {
@@ -80,6 +126,14 @@ function Jarvis() {
             onEnd: () => setSpeaking(false),
           });
         }
+        // Fire-and-forget memory extraction; never blocks the reply.
+        void extract({
+          data: { userMessage: clean, assistantMessage: reply, existingMemories: currentMemories },
+        })
+          .then(({ memories: found }) => {
+            if (found.length) setMemories((prev) => mergeMemories(prev, found));
+          })
+          .catch(() => { /* silent */ });
       } catch (err) {
         console.error(err);
         setMessages((m) => [
@@ -91,8 +145,9 @@ function Jarvis() {
         setTimeout(() => inputRef.current?.focus(), 0);
       }
     },
-    [ask, loading, messages, voiceOn],
+    [ask, extract, loading, messages, voiceOn],
   );
+
 
   const speech = useSpeech((finalText) => {
     void send(finalText);
@@ -164,11 +219,35 @@ function Jarvis() {
             >
               {voiceOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </IconButton>
+            <IconButton
+              title={`Memória (${memories.length})`}
+              onClick={() => setMemoryOpen((o) => !o)}
+              active={memoryOpen || memories.length > 0}
+            >
+              <Brain size={16} />
+            </IconButton>
             <IconButton title="Limpar conversa" onClick={clearConversation}>
               <Trash2 size={16} />
             </IconButton>
           </div>
         </header>
+
+        {memoryOpen && (
+          <MemoryPanel
+            memories={memories}
+            newMemory={newMemory}
+            setNewMemory={setNewMemory}
+            onAdd={() => {
+              const v = newMemory.trim();
+              if (!v) return;
+              setMemories((prev) => mergeMemories(prev, [v]));
+              setNewMemory("");
+            }}
+            onRemove={(idx) => setMemories((prev) => prev.filter((_, i) => i !== idx))}
+            onClear={() => setMemories([])}
+            onClose={() => setMemoryOpen(false)}
+          />
+        )}
 
         {/* Central reactor */}
         <div className="my-6 flex justify-center">
@@ -391,5 +470,111 @@ function IconButton({
     >
       {children}
     </button>
+  );
+}
+
+function MemoryPanel({
+  memories,
+  newMemory,
+  setNewMemory,
+  onAdd,
+  onRemove,
+  onClear,
+  onClose,
+}: {
+  memories: string[];
+  newMemory: string;
+  setNewMemory: (v: string) => void;
+  onAdd: () => void;
+  onRemove: (idx: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Brain size={14} className="text-hud" />
+          <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
+            Memória de longo prazo
+          </h2>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {memories.length} fato{memories.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {memories.length > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-gold"
+            >
+              esquecer tudo
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="text-hud/60 hover:text-hud"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+
+      <p className="mb-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+        Fatos duradouros sobre você que o J.A.R.V.I.S. lembra em toda conversa. Salvos apenas neste
+        navegador. Ele extrai automaticamente do que você conta, e você pode editar à vontade.
+      </p>
+
+      {memories.length === 0 ? (
+        <p className="mb-3 font-mono text-xs italic text-muted-foreground/70">
+          Nenhuma memória ainda — conte algo sobre você e ela aparecerá aqui.
+        </p>
+      ) : (
+        <ul className="mb-3 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+          {memories.map((m, i) => (
+            <li
+              key={i}
+              className="group flex items-start justify-between gap-2 rounded border border-hud/20 bg-hud/5 px-3 py-2 font-mono text-xs text-foreground/90"
+            >
+              <span className="flex-1 leading-relaxed">{m}</span>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                aria-label="Esquecer"
+                className="mt-0.5 shrink-0 text-hud/40 opacity-60 transition hover:text-gold group-hover:opacity-100"
+              >
+                <X size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onAdd();
+        }}
+        className="flex items-center gap-2"
+      >
+        <input
+          value={newMemory}
+          onChange={(e) => setNewMemory(e.target.value)}
+          placeholder="Adicionar um fato manualmente..."
+          className="flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-hud focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={!newMemory.trim()}
+          aria-label="Adicionar memória"
+          className="flex h-9 w-9 items-center justify-center rounded border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 disabled:opacity-40"
+        >
+          <Plus size={14} />
+        </button>
+      </form>
+    </div>
   );
 }
