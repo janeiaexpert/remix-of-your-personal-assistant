@@ -472,3 +472,109 @@ function IconButton({
     </button>
   );
 }
+
+function MemoryPanel({
+  memories,
+  newMemory,
+  setNewMemory,
+  onAdd,
+  onRemove,
+  onClear,
+  onClose,
+}: {
+  memories: string[];
+  newMemory: string;
+  setNewMemory: (v: string) => void;
+  onAdd: () => void;
+  onRemove: (idx: number) => void;
+  onClear: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Brain size={14} className="text-hud" />
+          <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
+            Memória de longo prazo
+          </h2>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {memories.length} fato{memories.length === 1 ? "" : "s"}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          {memories.length > 0 && (
+            <button
+              type="button"
+              onClick={onClear}
+              className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground hover:text-gold"
+            >
+              esquecer tudo
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="text-hud/60 hover:text-hud"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+
+      <p className="mb-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+        Fatos duradouros sobre você que o J.A.R.V.I.S. lembra em toda conversa. Salvos apenas neste
+        navegador. Ele extrai automaticamente do que você conta, e você pode editar à vontade.
+      </p>
+
+      {memories.length === 0 ? (
+        <p className="mb-3 font-mono text-xs italic text-muted-foreground/70">
+          Nenhuma memória ainda — conte algo sobre você e ela aparecerá aqui.
+        </p>
+      ) : (
+        <ul className="mb-3 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+          {memories.map((m, i) => (
+            <li
+              key={i}
+              className="group flex items-start justify-between gap-2 rounded border border-hud/20 bg-hud/5 px-3 py-2 font-mono text-xs text-foreground/90"
+            >
+              <span className="flex-1 leading-relaxed">{m}</span>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                aria-label="Esquecer"
+                className="mt-0.5 shrink-0 text-hud/40 opacity-60 transition hover:text-gold group-hover:opacity-100"
+              >
+                <X size={12} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          onAdd();
+        }}
+        className="flex items-center gap-2"
+      >
+        <input
+          value={newMemory}
+          onChange={(e) => setNewMemory(e.target.value)}
+          placeholder="Adicionar um fato manualmente..."
+          className="flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground placeholder:text-muted-foreground/60 focus:border-hud focus:outline-none"
+        />
+        <button
+          type="submit"
+          disabled={!newMemory.trim()}
+          aria-label="Adicionar memória"
+          className="flex h-9 w-9 items-center justify-center rounded border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 disabled:opacity-40"
+        >
+          <Plus size={14} />
+        </button>
+      </form>
+    </div>
+  );
+}
