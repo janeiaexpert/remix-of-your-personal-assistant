@@ -300,11 +300,76 @@ function Jarvis() {
             >
               <Brain size={16} />
             </IconButton>
+            <IconButton
+              title={`Bridge local (${bridgeStatus})`}
+              onClick={() => setBridgeOpen((o) => !o)}
+              active={bridgeStatus === "online"}
+            >
+              {bridgeStatus === "online" ? <PlugZap size={16} /> : <Plug size={16} />}
+            </IconButton>
             <IconButton title="Limpar conversa" onClick={clearConversation}>
               <Trash2 size={16} />
             </IconButton>
           </div>
         </header>
+
+        {bridgeOpen && (
+          <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
+                Bridge local — {bridgeStatus}
+              </h2>
+              <button type="button" onClick={() => setBridgeOpen(false)} className="text-hud/60 hover:text-hud">
+                <X size={14} />
+              </button>
+            </div>
+            <p className="mb-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              Rode <code className="text-hud">python3 agent/jarvis_agent.py</code> na sua máquina, cole a URL e o token abaixo, e o Jarvis passa a executar shell/arquivos aí.
+            </p>
+            <div className="mb-2 flex gap-2">
+              <input
+                value={bridgeUrl}
+                onChange={(e) => setBridgeUrl(e.target.value)}
+                placeholder="http://127.0.0.1:7842"
+                className="flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
+              />
+            </div>
+            <div className="mb-2 flex gap-2">
+              <input
+                value={bridgeToken}
+                onChange={(e) => setBridgeToken(e.target.value)}
+                placeholder="token (do terminal do agent)"
+                className="flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
+              />
+            </div>
+            {bridgeError && (
+              <p className="mb-2 font-mono text-[10px] text-gold">{bridgeError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void testBridge()}
+                className="rounded border border-hud/40 bg-hud/10 px-3 py-1.5 font-mono text-xs text-hud hover:bg-hud/20"
+              >
+                Testar / conectar
+              </button>
+              {bridge && (
+                <button
+                  type="button"
+                  onClick={disconnectBridge}
+                  className="rounded border border-hud/30 px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-gold"
+                >
+                  Desconectar
+                </button>
+              )}
+            </div>
+            {toolLog.length > 0 && (
+              <div className="mt-3 max-h-32 overflow-y-auto rounded border border-hud/20 bg-black/40 p-2 font-mono text-[10px] text-hud/80">
+                {toolLog.map((l, i) => (<div key={i}>{l}</div>))}
+              </div>
+            )}
+          </div>
+        )}
 
         {memoryOpen && (
           <MemoryPanel
