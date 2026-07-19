@@ -71,6 +71,14 @@ function Jarvis() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [newMemory, setNewMemory] = useState("");
+  const [bridge, setBridge] = useState<BridgeConfig | null>(null);
+  const [bridgeStatus, setBridgeStatus] = useState<"offline" | "online" | "error">("offline");
+  const [bridgeOpen, setBridgeOpen] = useState(false);
+  const [bridgeUrl, setBridgeUrl] = useState("http://127.0.0.1:7842");
+  const [bridgeToken, setBridgeToken] = useState("");
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [toolLog, setToolLog] = useState<string[]>([]);
+  const bridgeRef = useRef<BridgeConfig | null>(null);
   const memoriesRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
