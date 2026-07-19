@@ -89,29 +89,50 @@ function Jarvis() {
   useEffect(() => {
     setMessages(loadMessages());
     setMemories(loadMemories());
+    const b = loadBridge();
+    if (b) {
+      setBridge(b);
+      bridgeRef.current = b;
+      setBridgeUrl(b.url);
+      setBridgeToken(b.token);
+      void health(b).then(() => setBridgeStatus("online")).catch(() => setBridgeStatus("error"));
+    }
     setHydrated(true);
   }, []);
 
+  useEffect(() => { bridgeRef.current = bridge; }, [bridge]);
+
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-    } catch { /* quota */ }
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch { /* quota */ }
   }, [messages, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(MEMORY_KEY, JSON.stringify(memories));
-    } catch { /* quota */ }
+    try { window.localStorage.setItem(MEMORY_KEY, JSON.stringify(memories)); } catch { /* quota */ }
   }, [memories, hydrated]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  useEffect(() => {
-    inputRef.current?.focus();
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const testBridge = useCallback(async () => {
+    const cfg = { url: bridgeUrl.trim().replace(/\/$/, ""), token: bridgeToken.trim() };
+    if (!cfg.url || !cfg.token) { setBridgeError("URL e token obrigatórios"); return; }
+    setBridgeError(null);
+    try {
+      await health(cfg);
+      setBridge(cfg); bridgeRef.current = cfg; saveBridge(cfg); setBridgeStatus("online");
+    } catch (e) {
+      setBridgeStatus("error");
+      setBridgeError(e instanceof Error ? e.message : "Falha ao conectar");
+    }
+  }, [bridgeUrl, bridgeToken]);
+
+  const disconnectBridge = useCallback(() => {
+    setBridge(null); bridgeRef.current = null; saveBridge(null); setBridgeStatus("offline");
   }, []);
 
   const send = useCallback(
@@ -121,21 +142,65 @@ function Jarvis() {
       void primeAudio();
       cancelSpeech();
       setSpeaking(false);
-      const next: Msg[] = [...messages, { role: "user", content: clean }];
-      setMessages(next);
+      const displayNext: Msg[] = [...messages, { role: "user", content: clean }];
+      setMessages(displayNext);
       setInput("");
       setLoading(true);
+      setToolLog([]);
       try {
         const currentMemories = memoriesRef.current;
-        const { text: reply } = await ask({ data: { messages: next, memories: currentMemories } });
-        setMessages((m) => [...m, { role: "assistant", content: reply }]);
-        if (voiceOn) {
-          void speak(reply, {
-            onStart: () => setSpeaking(true),
-            onEnd: () => setSpeaking(false),
+        // Build initial ModelMessage[] from the visible transcript.
+        let modelMessages: unknown[] = displayNext.map((m) => ({ role: m.role, content: m.content }));
+        let finalText = "";
+        const MAX_ROUNDS = 6;
+        for (let round = 0; round < MAX_ROUNDS; round++) {
+          const cfg = bridgeRef.current;
+          const res = await ask({
+            data: {
+              messages: modelMessages,
+              memories: currentMemories,
+              hasBridge: !!cfg && bridgeStatus === "online",
+            },
+          });
+          finalText = res.text || finalText;
+          const responseMsgs = JSON.parse(res.responseMessagesJson) as unknown[];
+          modelMessages = [...modelMessages, ...responseMsgs];
+          if (!res.pending.length) break;
+          if (!cfg) {
+            finalText = "A bridge local está offline, senhor — não posso tocar na sua máquina agora. Rode `python3 agent/jarvis_agent.py` e cole a URL + token no painel do plug.";
+            break;
+          }
+          const toolResults = await Promise.all(
+            res.pending.map(async (call) => {
+              let input: Record<string, unknown> = {};
+              try { input = JSON.parse(call.inputJson) as Record<string, unknown>; } catch { /* */ }
+              setToolLog((l) => [...l, `▶ ${call.name} ${JSON.stringify(input).slice(0, 120)}`]);
+              try {
+                const output = await runTool(cfg, call.name, input);
+                return { toolCallId: call.id, toolName: call.name, output };
+              } catch (e) {
+                return {
+                  toolCallId: call.id, toolName: call.name,
+                  output: { error: e instanceof Error ? e.message : String(e) },
+                };
+              }
+            }),
+          );
+          modelMessages.push({
+            role: "tool",
+            content: toolResults.map((r) => ({
+              type: "tool-result",
+              toolCallId: r.toolCallId,
+              toolName: r.toolName,
+              output: { type: "json", value: r.output },
+            })),
           });
         }
-        // Fire-and-forget memory extraction; never blocks the reply.
+        const reply = finalText || "…";
+        setMessages((m) => [...m, { role: "assistant", content: reply }]);
+        if (voiceOn) {
+          void speak(reply, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
+        }
         void extract({
           data: { userMessage: clean, assistantMessage: reply, existingMemories: currentMemories },
         })
@@ -154,7 +219,7 @@ function Jarvis() {
         setTimeout(() => inputRef.current?.focus(), 0);
       }
     },
-    [ask, extract, loading, messages, voiceOn],
+    [ask, extract, loading, messages, voiceOn, bridgeStatus],
   );
 
 
