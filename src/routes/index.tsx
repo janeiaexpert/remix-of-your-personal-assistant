@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
-import { Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus } from "lucide-react";
+import { Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
+import { loadBridge, saveBridge, health, runTool, type BridgeConfig } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
