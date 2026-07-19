@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
-import { Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus } from "lucide-react";
+import { Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
+import { loadBridge, saveBridge, health, runTool, type BridgeConfig } from "@/lib/bridge";
 import { cn } from "@/lib/utils";
 
 type Msg = { role: "user" | "assistant"; content: string };
@@ -70,6 +71,14 @@ function Jarvis() {
   const [voiceOn, setVoiceOn] = useState(true);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [newMemory, setNewMemory] = useState("");
+  const [bridge, setBridge] = useState<BridgeConfig | null>(null);
+  const [bridgeStatus, setBridgeStatus] = useState<"offline" | "online" | "error">("offline");
+  const [bridgeOpen, setBridgeOpen] = useState(false);
+  const [bridgeUrl, setBridgeUrl] = useState("http://127.0.0.1:7842");
+  const [bridgeToken, setBridgeToken] = useState("");
+  const [bridgeError, setBridgeError] = useState<string | null>(null);
+  const [toolLog, setToolLog] = useState<string[]>([]);
+  const bridgeRef = useRef<BridgeConfig | null>(null);
   const memoriesRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -80,29 +89,50 @@ function Jarvis() {
   useEffect(() => {
     setMessages(loadMessages());
     setMemories(loadMemories());
+    const b = loadBridge();
+    if (b) {
+      setBridge(b);
+      bridgeRef.current = b;
+      setBridgeUrl(b.url);
+      setBridgeToken(b.token);
+      void health(b).then(() => setBridgeStatus("online")).catch(() => setBridgeStatus("error"));
+    }
     setHydrated(true);
   }, []);
 
+  useEffect(() => { bridgeRef.current = bridge; }, [bridge]);
+
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
-    } catch { /* quota */ }
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch { /* quota */ }
   }, [messages, hydrated]);
 
   useEffect(() => {
     if (!hydrated) return;
-    try {
-      window.localStorage.setItem(MEMORY_KEY, JSON.stringify(memories));
-    } catch { /* quota */ }
+    try { window.localStorage.setItem(MEMORY_KEY, JSON.stringify(memories)); } catch { /* quota */ }
   }, [memories, hydrated]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  useEffect(() => {
-    inputRef.current?.focus();
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const testBridge = useCallback(async () => {
+    const cfg = { url: bridgeUrl.trim().replace(/\/$/, ""), token: bridgeToken.trim() };
+    if (!cfg.url || !cfg.token) { setBridgeError("URL e token obrigatórios"); return; }
+    setBridgeError(null);
+    try {
+      await health(cfg);
+      setBridge(cfg); bridgeRef.current = cfg; saveBridge(cfg); setBridgeStatus("online");
+    } catch (e) {
+      setBridgeStatus("error");
+      setBridgeError(e instanceof Error ? e.message : "Falha ao conectar");
+    }
+  }, [bridgeUrl, bridgeToken]);
+
+  const disconnectBridge = useCallback(() => {
+    setBridge(null); bridgeRef.current = null; saveBridge(null); setBridgeStatus("offline");
   }, []);
 
   const send = useCallback(
@@ -112,21 +142,65 @@ function Jarvis() {
       void primeAudio();
       cancelSpeech();
       setSpeaking(false);
-      const next: Msg[] = [...messages, { role: "user", content: clean }];
-      setMessages(next);
+      const displayNext: Msg[] = [...messages, { role: "user", content: clean }];
+      setMessages(displayNext);
       setInput("");
       setLoading(true);
+      setToolLog([]);
       try {
         const currentMemories = memoriesRef.current;
-        const { text: reply } = await ask({ data: { messages: next, memories: currentMemories } });
-        setMessages((m) => [...m, { role: "assistant", content: reply }]);
-        if (voiceOn) {
-          void speak(reply, {
-            onStart: () => setSpeaking(true),
-            onEnd: () => setSpeaking(false),
+        // Build initial ModelMessage[] from the visible transcript.
+        let modelMessages: unknown[] = displayNext.map((m) => ({ role: m.role, content: m.content }));
+        let finalText = "";
+        const MAX_ROUNDS = 6;
+        for (let round = 0; round < MAX_ROUNDS; round++) {
+          const cfg = bridgeRef.current;
+          const res = await ask({
+            data: {
+              messages: modelMessages,
+              memories: currentMemories,
+              hasBridge: !!cfg && bridgeStatus === "online",
+            },
+          });
+          finalText = res.text || finalText;
+          const responseMsgs = JSON.parse(res.responseMessagesJson) as unknown[];
+          modelMessages = [...modelMessages, ...responseMsgs];
+          if (!res.pending.length) break;
+          if (!cfg) {
+            finalText = "A bridge local está offline, senhor — não posso tocar na sua máquina agora. Rode `python3 agent/jarvis_agent.py` e cole a URL + token no painel do plug.";
+            break;
+          }
+          const toolResults = await Promise.all(
+            res.pending.map(async (call) => {
+              let input: Record<string, unknown> = {};
+              try { input = JSON.parse(call.inputJson) as Record<string, unknown>; } catch { /* */ }
+              setToolLog((l) => [...l, `▶ ${call.name} ${JSON.stringify(input).slice(0, 120)}`]);
+              try {
+                const output = await runTool(cfg, call.name, input);
+                return { toolCallId: call.id, toolName: call.name, output };
+              } catch (e) {
+                return {
+                  toolCallId: call.id, toolName: call.name,
+                  output: { error: e instanceof Error ? e.message : String(e) },
+                };
+              }
+            }),
+          );
+          modelMessages.push({
+            role: "tool",
+            content: toolResults.map((r) => ({
+              type: "tool-result",
+              toolCallId: r.toolCallId,
+              toolName: r.toolName,
+              output: { type: "json", value: r.output },
+            })),
           });
         }
-        // Fire-and-forget memory extraction; never blocks the reply.
+        const reply = finalText || "…";
+        setMessages((m) => [...m, { role: "assistant", content: reply }]);
+        if (voiceOn) {
+          void speak(reply, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
+        }
         void extract({
           data: { userMessage: clean, assistantMessage: reply, existingMemories: currentMemories },
         })
@@ -145,7 +219,7 @@ function Jarvis() {
         setTimeout(() => inputRef.current?.focus(), 0);
       }
     },
-    [ask, extract, loading, messages, voiceOn],
+    [ask, extract, loading, messages, voiceOn, bridgeStatus],
   );
 
 
@@ -226,11 +300,76 @@ function Jarvis() {
             >
               <Brain size={16} />
             </IconButton>
+            <IconButton
+              title={`Bridge local (${bridgeStatus})`}
+              onClick={() => setBridgeOpen((o) => !o)}
+              active={bridgeStatus === "online"}
+            >
+              {bridgeStatus === "online" ? <PlugZap size={16} /> : <Plug size={16} />}
+            </IconButton>
             <IconButton title="Limpar conversa" onClick={clearConversation}>
               <Trash2 size={16} />
             </IconButton>
           </div>
         </header>
+
+        {bridgeOpen && (
+          <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
+                Bridge local — {bridgeStatus}
+              </h2>
+              <button type="button" onClick={() => setBridgeOpen(false)} className="text-hud/60 hover:text-hud">
+                <X size={14} />
+              </button>
+            </div>
+            <p className="mb-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              Rode <code className="text-hud">python3 agent/jarvis_agent.py</code> na sua máquina, cole a URL e o token abaixo, e o Jarvis passa a executar shell/arquivos aí.
+            </p>
+            <div className="mb-2 flex gap-2">
+              <input
+                value={bridgeUrl}
+                onChange={(e) => setBridgeUrl(e.target.value)}
+                placeholder="http://127.0.0.1:7842"
+                className="flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
+              />
+            </div>
+            <div className="mb-2 flex gap-2">
+              <input
+                value={bridgeToken}
+                onChange={(e) => setBridgeToken(e.target.value)}
+                placeholder="token (do terminal do agent)"
+                className="flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
+              />
+            </div>
+            {bridgeError && (
+              <p className="mb-2 font-mono text-[10px] text-gold">{bridgeError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void testBridge()}
+                className="rounded border border-hud/40 bg-hud/10 px-3 py-1.5 font-mono text-xs text-hud hover:bg-hud/20"
+              >
+                Testar / conectar
+              </button>
+              {bridge && (
+                <button
+                  type="button"
+                  onClick={disconnectBridge}
+                  className="rounded border border-hud/30 px-3 py-1.5 font-mono text-xs text-muted-foreground hover:text-gold"
+                >
+                  Desconectar
+                </button>
+              )}
+            </div>
+            {toolLog.length > 0 && (
+              <div className="mt-3 max-h-32 overflow-y-auto rounded border border-hud/20 bg-black/40 p-2 font-mono text-[10px] text-hud/80">
+                {toolLog.map((l, i) => (<div key={i}>{l}</div>))}
+              </div>
+            )}
+          </div>
+        )}
 
         {memoryOpen && (
           <MemoryPanel
