@@ -248,16 +248,16 @@ export const askJarvis = createServerFn({ method: "POST" })
 
       return {
         text: result.text,
-        responseMessages: result.response.messages as ModelMessage[],
+        responseMessagesJson: JSON.stringify(result.response.messages),
         pending,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("429")) {
-        return { text: "Perdão, senhor — circuitos sobrecarregados. Tente novamente em instantes.", responseMessages: [], pending: [] };
+        return { text: "Perdão, senhor — circuitos sobrecarregados. Tente novamente em instantes.", responseMessagesJson: "[]", pending: [] as { id: string; name: string; input: unknown }[] };
       }
       if (msg.includes("402")) {
-        return { text: "Créditos esgotados, senhor. Recarregue no painel do Lovable.", responseMessages: [], pending: [] };
+        return { text: "Créditos esgotados, senhor. Recarregue no painel do Lovable.", responseMessagesJson: "[]", pending: [] as { id: string; name: string; input: unknown }[] };
       }
       throw err;
     }
