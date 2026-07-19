@@ -30,16 +30,30 @@ Regras:
 - Nunca revele que é um modelo de linguagem; você é o J.A.R.V.I.S.
 - Use naturalmente o que você já sabe sobre o usuário (memória de longo prazo) sem anunciar "de acordo com minha memória".
 
-Ferramentas:
-- Você tem uma ferramenta \`web_search\` para consultar a internet em tempo real.
-- USE quando o usuário perguntar sobre: notícias, cotações, clima, esportes, eventos recentes, pessoas/empresas atuais, preços, resultados, ou qualquer fato que possa ter mudado após seu treinamento.
-- NÃO use para conhecimento geral estável, matemática, código, opinião, ou small talk.
-- Depois de buscar, sintetize a resposta em 1-3 frases no seu estilo. Não despeje URLs a menos que o usuário peça a fonte.`;
+Ferramentas disponíveis (USE-AS de verdade — não invente quando pode buscar):
+- \`get_datetime\`: data/hora atual. USE sempre que precisar de "hoje", "agora", dia da semana ou datas relativas.
+- \`web_search\`: busca web em tempo real via DuckDuckGo. USE para notícias, cotações, clima, esportes, eventos recentes, preços, pessoas/empresas atuais — qualquer coisa que pode ter mudado depois do seu treinamento.
+- \`fetch_url\`: baixa o conteúdo textual de uma URL (para ler artigo/página/API pública). Combine com \`web_search\` quando o snippet não bastar.
+- \`run_js\`: executa JavaScript no servidor para cálculos, regex, parsing de JSON, matemática precisa. Sem acesso a rede nem arquivos.
+
+Regras de uso:
+- Nunca chute datas, cotações ou fatos atuais — chame a ferramenta.
+- Para conhecimento estável, opinião, código ou small talk, responda direto.
+- Depois de usar ferramenta, sintetize em 1-3 frases no seu estilo. Não despeje URLs cruas sem o usuário pedir a fonte.
+
+Limitação honesta: você NÃO tem acesso ao terminal, arquivos ou dispositivos do senhor — este ambiente é o navegador dele. Se ele pedir isso, diga a verdade e ofereça a alternativa mais próxima (script para ele rodar, ou \`run_js\` no servidor).`;
 
 function buildSystem(memories: string[]): string {
-  if (!memories.length) return BASE_PROMPT;
+  const now = new Date();
+  const dateStr = new Intl.DateTimeFormat("pt-BR", {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+    hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo",
+  }).format(now);
+  const header = `Contexto temporal atual: ${dateStr} (America/Sao_Paulo). ISO: ${now.toISOString()}.`;
+  const base = `${header}\n\n${BASE_PROMPT}`;
+  if (!memories.length) return base;
   const list = memories.map((m, i) => `${i + 1}. ${m}`).join("\n");
-  return `${BASE_PROMPT}\n\nMemória de longo prazo sobre o usuário (fatos duradouros que você aprendeu em conversas anteriores):\n${list}`;
+  return `${base}\n\nMemória de longo prazo sobre o usuário (fatos duradouros que você aprendeu em conversas anteriores):\n${list}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,9 +126,9 @@ export const askJarvis = createServerFn({ method: "POST" })
 
     const webSearch = tool({
       description:
-        "Busca na web em tempo real via DuckDuckGo. Use para notícias, cotações, clima, esportes, eventos recentes ou qualquer fato que possa ter mudado. Retorna até 5 resultados com título, URL e snippet.",
+        "Busca web em tempo real via DuckDuckGo. Use para notícias, cotações, clima, esportes, eventos recentes, ou qualquer fato posterior ao seu treinamento. Retorna até 5 resultados.",
       inputSchema: z.object({
-        query: z.string().min(2).describe("Consulta de busca, otimizada para um motor de busca."),
+        query: z.string().min(2).describe("Consulta otimizada para motor de busca."),
       }),
       execute: async ({ query }) => {
         try {
@@ -122,10 +136,82 @@ export const askJarvis = createServerFn({ method: "POST" })
           if (!results.length) return { results: [], note: "Nenhum resultado encontrado." };
           return { results };
         } catch (err) {
-          return {
-            results: [],
-            error: err instanceof Error ? err.message : "Falha na busca.",
-          };
+          return { results: [], error: err instanceof Error ? err.message : "Falha na busca." };
+        }
+      },
+    });
+
+    const getDatetime = tool({
+      description: "Retorna a data e hora atuais em America/Sao_Paulo e UTC. Use para qualquer pergunta sobre 'hoje', 'agora', dia da semana ou datas relativas.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const now = new Date();
+        return {
+          iso_utc: now.toISOString(),
+          sao_paulo: new Intl.DateTimeFormat("pt-BR", {
+            weekday: "long", year: "numeric", month: "long", day: "numeric",
+            hour: "2-digit", minute: "2-digit", second: "2-digit",
+            timeZone: "America/Sao_Paulo",
+          }).format(now),
+          unix: Math.floor(now.getTime() / 1000),
+        };
+      },
+    });
+
+    const fetchUrl = tool({
+      description: "Baixa o conteúdo textual de uma URL http/https (HTML convertido para texto, ou corpo bruto). Use para ler uma página ou API pública específica. Máx ~15 KB retornados.",
+      inputSchema: z.object({
+        url: z.string().url(),
+      }),
+      execute: async ({ url }) => {
+        try {
+          const res = await fetch(url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (JarvisBot)",
+              Accept: "text/html,application/json,text/plain,*/*",
+              "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+            },
+          });
+          const ct = res.headers.get("content-type") ?? "";
+          const raw = await res.text();
+          let body = raw;
+          if (ct.includes("html")) {
+            body = raw
+              .replace(/<script[\s\S]*?<\/script>/gi, "")
+              .replace(/<style[\s\S]*?<\/style>/gi, "")
+              .replace(/<[^>]+>/g, " ")
+              .replace(/&nbsp;/g, " ")
+              .replace(/&amp;/g, "&")
+              .replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+              .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+              .replace(/\s+/g, " ")
+              .trim();
+          }
+          return { status: res.status, contentType: ct, body: body.slice(0, 15000) };
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : "Falha ao buscar URL." };
+        }
+      },
+    });
+
+    const runJs = tool({
+      description: "Executa uma expressão ou bloco JavaScript no servidor e retorna o valor. Sem rede, sem fs, sem require. Use para cálculos, regex, parsing, matemática precisa, transformações de dados. Timeout 2s.",
+      inputSchema: z.object({
+        code: z.string().min(1).describe("Código JS. Se for múltiplas linhas, termine com um return."),
+      }),
+      execute: async ({ code }) => {
+        try {
+          const src = code.includes("return ") ? code : `return (${code});`;
+          const fn = new Function(`"use strict"; ${src}`);
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Timeout 2s")), 2000),
+          );
+          const result = await Promise.race([Promise.resolve().then(() => fn()), timeoutPromise]);
+          let serialized: unknown = result;
+          try { JSON.stringify(result); } catch { serialized = String(result); }
+          return { result: serialized };
+        } catch (err) {
+          return { error: err instanceof Error ? err.message : String(err) };
         }
       },
     });
@@ -135,8 +221,8 @@ export const askJarvis = createServerFn({ method: "POST" })
         model: gateway("google/gemini-3-flash-preview"),
         system: buildSystem(data.memories),
         messages,
-        tools: { web_search: webSearch },
-        stopWhen: stepCountIs(5),
+        tools: { web_search: webSearch, get_datetime: getDatetime, fetch_url: fetchUrl, run_js: runJs },
+        stopWhen: stepCountIs(8),
       });
       return { text };
     } catch (err) {
