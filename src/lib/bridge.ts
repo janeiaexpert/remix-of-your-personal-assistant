@@ -82,8 +82,11 @@ export async function runTool(
       });
     case "fs_list":
       return call(cfg, "/list", { path: input.path ?? "." });
+    case "open_app":
+      return call(cfg, "/open", { target: input.target, args: input.args });
     default:
       throw new Error(`Unknown local tool: ${name}`);
+
   }
 }
 
