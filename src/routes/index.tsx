@@ -449,7 +449,7 @@ function Jarvis() {
               <button
                 type="button"
                 onClick={() => setQrOpen((o) => !o)}
-                disabled={!bridgeUrl.trim() || !bridgeToken.trim()}
+                disabled={!bridgeToken.trim()}
                 className="flex items-center gap-1.5 rounded border border-hud/40 px-3 py-1.5 font-mono text-xs text-hud hover:bg-hud/10 disabled:opacity-40"
               >
                 <QrCode size={13} /> {qrOpen ? "Ocultar QR" : "QR p/ celular"}
@@ -466,7 +466,76 @@ function Jarvis() {
             </div>
             {qrOpen && (
               <div className="mt-3 rounded border border-hud/20 bg-black/40 p-3">
-                {qrImage ? (
+                <div className="mb-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQrMode("lan")}
+                    className={`flex-1 rounded border px-2 py-1.5 font-mono text-[10px] ${qrMode === "lan" ? "border-hud bg-hud/15 text-hud" : "border-hud/25 text-muted-foreground hover:text-hud"}`}
+                  >
+                    Rede local (http)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQrMode("tunnel")}
+                    className={`flex-1 rounded border px-2 py-1.5 font-mono text-[10px] ${qrMode === "tunnel" ? "border-hud bg-hud/15 text-hud" : "border-hud/25 text-muted-foreground hover:text-hud"}`}
+                  >
+                    Túnel (https)
+                  </button>
+                </div>
+
+                {qrMode === "lan" ? (
+                  <p className="mb-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                    Usa o endereço do campo URL acima (ex: <code className="text-hud">http://192.168.1.50:7842</code>).
+                    Rode o agente com <code className="text-hud">JARVIS_HOST=0.0.0.0</code>.
+                    {pageIsHttps() && isHttpUrl(qrTarget) && (
+                      <span className="mt-1 block text-gold">
+                        ⚠ Esta página está em https, então o celular vai bloquear chamadas http (conteúdo misto). Use a aba
+                        “Túnel (https)” ou abra o Jarvis por http na rede local.
+                      </span>
+                    )}
+                  </p>
+                ) : (
+                  <>
+                    <p className="mb-2 font-mono text-[10px] leading-relaxed text-muted-foreground">
+                      Abra um túnel https para o agente local e cole a URL pública abaixo. Duas opções gratuitas:
+                    </p>
+                    <pre className="mb-1 overflow-x-auto rounded border border-hud/20 bg-black/50 p-2 font-mono text-[10px] text-hud/90">
+{`# 1) Cloudflare Tunnel (sem conta)
+cloudflared tunnel --url http://127.0.0.1:7842`}
+                    </pre>
+                    <pre className="mb-2 overflow-x-auto rounded border border-hud/20 bg-black/50 p-2 font-mono text-[10px] text-hud/90">
+{`# 2) ngrok (conta gratuita)
+ngrok http 7842`}
+                    </pre>
+                    <input
+                      value={tunnelUrl}
+                      onChange={(e) => setTunnelUrl(e.target.value)}
+                      placeholder="https://algo-aleatorio.trycloudflare.com"
+                      className="mb-2 w-full rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
+                    />
+                    <div className="mb-3 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setBridgeUrl(qrTarget)}
+                        disabled={!qrTarget}
+                        className="rounded border border-hud/40 px-2 py-1 font-mono text-[10px] text-hud hover:bg-hud/10 disabled:opacity-40"
+                      >
+                        Usar também nesta máquina
+                      </button>
+                    </div>
+                    {isHttpUrl(qrTarget) && (
+                      <p className="mb-2 font-mono text-[10px] text-gold">
+                        ⚠ A URL do túnel precisa começar com https:// para funcionar no celular.
+                      </p>
+                    )}
+                  </>
+                )}
+
+                {!qrTarget ? (
+                  <p className="font-mono text-[10px] text-muted-foreground">
+                    {qrMode === "tunnel" ? "Cole a URL do túnel para gerar o QR." : "Preencha a URL da bridge acima."}
+                  </p>
+                ) : qrImage ? (
                   <div className="flex flex-col items-center gap-2">
                     <img
                       src={qrImage}
@@ -474,11 +543,12 @@ function Jarvis() {
                       className="h-44 w-44 rounded bg-white p-1"
                     />
                     <p className="text-center font-mono text-[10px] leading-relaxed text-muted-foreground">
-                      Escaneie com a câmera do celular — o Jarvis abre já com IP e token preenchidos e tenta conectar.
+                      Escaneie com a câmera do celular — o Jarvis abre já com endereço e token preenchidos e tenta conectar.
                     </p>
-                    {isLoopback(bridgeUrl) && (
+                    <p className="break-all text-center font-mono text-[10px] text-hud/70">{qrTarget}</p>
+                    {qrMode === "lan" && isLoopback(qrTarget) && (
                       <p className="text-center font-mono text-[10px] text-gold">
-                        ⚠ A URL é localhost: o celular não vai alcançar. Troque pelo IP local (ex: http://192.168.1.50:7842) antes de escanear.
+                        ⚠ A URL é localhost: o celular não vai alcançar. Troque pelo IP local (ex: http://192.168.1.50:7842).
                       </p>
                     )}
                   </div>
@@ -487,6 +557,7 @@ function Jarvis() {
                 )}
               </div>
             )}
+
 
             {toolLog.length > 0 && (
               <div className="mt-3 max-h-32 overflow-y-auto rounded border border-hud/20 bg-black/40 p-2 font-mono text-[10px] text-hud/80">
