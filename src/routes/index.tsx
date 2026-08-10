@@ -2,21 +2,31 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
-import { Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode } from "lucide-react";
+import {
+  Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
+  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera,
+} from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { loadBridge, saveBridge, loadBridgeDraft, saveBridgeDraft, health, runTool, pairingUrl, readPairingFromHash, type BridgeConfig } from "@/lib/bridge";
+import {
+  type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl,
+  startScreenShare, captureFrame,
+} from "@/lib/vision";
+import { useWake, type WakeMode } from "@/lib/wake";
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 
-type Msg = { role: "user" | "assistant"; content: string };
+type Msg = { role: "user" | "assistant"; content: string; attachments?: Attachment[] };
 const STORAGE_KEY = "jarvis:conversation:v1";
 const MEMORY_KEY = "jarvis:memories:v1";
+const WAKE_KEY = "jarvis:wake:v1";
 const MAX_MEMORIES = 60;
 const GREETING: Msg = {
   role: "assistant",
   content: "Sistemas online. Ao seu dispor, senhor. Em que posso ajudá-lo?",
 };
+
 
 function loadMemories(): string[] {
   if (typeof window === "undefined") return [];
@@ -98,19 +108,34 @@ function Jarvis() {
   const [qrOpen, setQrOpen] = useState(false);
   const [qrMode, setQrMode] = useState<"lan" | "tunnel">("lan");
   const [tunnelUrl, setTunnelUrl] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [linkInput, setLinkInput] = useState("");
+  const [screenOn, setScreenOn] = useState(false);
+  const [screenError, setScreenError] = useState<string | null>(null);
+  const [wakeMode, setWakeMode] = useState<WakeMode>("off");
+  const [wakeOpen, setWakeOpen] = useState(false);
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
   const memoriesRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => { memoriesRef.current = memories; }, [memories]);
+
 
   // Hydrate from localStorage
   useEffect(() => {
     setIsMobile(isMobileDevice());
     setMessages(loadMessages());
     setMemories(loadMemories());
+    try {
+      const w = window.localStorage.getItem(WAKE_KEY);
+      if (w === "word" || w === "clap" || w === "both") setWakeMode(w);
+    } catch { /* ignore */ }
+
     const paired = readPairingFromHash();
     const b = paired ?? loadBridge();
     const draft = loadBridgeDraft();
@@ -154,7 +179,14 @@ function Jarvis() {
 
   useEffect(() => {
     if (!hydrated) return;
-    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)); } catch { /* quota */ }
+    // Não persistimos data: URLs (estouram a quota) — apenas o rótulo do anexo.
+    const slim = messages.map((m) => ({
+      ...m,
+      attachments: m.attachments?.map((a) =>
+        a.url.startsWith("data:") ? { ...a, url: "" } : a,
+      ),
+    }));
+    try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(slim)); } catch { /* quota */ }
   }, [messages, hydrated]);
 
   useEffect(() => {
@@ -163,10 +195,85 @@ function Jarvis() {
   }, [memories, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
+    try { window.localStorage.setItem(WAKE_KEY, wakeMode); } catch { /* quota */ }
+  }, [wakeMode, hydrated]);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
+
+  // --- Anexos --------------------------------------------------------------
+  const addFiles = useCallback(async (files: FileList | null) => {
+    if (!files?.length) return;
+    const next: Attachment[] = [];
+    for (const file of Array.from(files).slice(0, 6)) {
+      if (file.size > 18 * 1024 * 1024) {
+        setScreenError(`${file.name}: acima de 18 MB, senhor.`);
+        continue;
+      }
+      const url = await fileToDataUrl(file);
+      const mediaType = file.type || guessMimeFromUrl(file.name);
+      next.push({ id: newId(), kind: kindFromMime(mediaType, file.name), name: file.name, mediaType, url });
+    }
+    if (next.length) setAttachments((a) => [...a, ...next]);
+  }, []);
+
+  const addLink = useCallback(() => {
+    const url = linkInput.trim();
+    if (!/^https?:\/\//i.test(url)) { setScreenError("Cole um link http(s) válido."); return; }
+    const mediaType = guessMimeFromUrl(url);
+    setAttachments((a) => [
+      ...a,
+      { id: newId(), kind: kindFromMime(mediaType, url), name: url.split("/").pop() || url, mediaType, url, fromLink: true },
+    ]);
+    setLinkInput("");
+    setScreenError(null);
+  }, [linkInput]);
+
+  const removeAttachment = (id: string) =>
+    setAttachments((a) => a.filter((x) => x.id !== id));
+
+  // --- Visão da tela -------------------------------------------------------
+  const stopScreen = useCallback(() => {
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    screenStreamRef.current = null;
+    setScreenOn(false);
+  }, []);
+
+  const toggleScreen = useCallback(async () => {
+    if (screenOn) { stopScreen(); return; }
+    setScreenError(null);
+    try {
+      const stream = await startScreenShare();
+      stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+        screenStreamRef.current = null;
+        setScreenOn(false);
+      });
+      screenStreamRef.current = stream;
+      setScreenOn(true);
+    } catch (e) {
+      setScreenError(e instanceof Error ? e.message : "Captura de tela cancelada.");
+      setScreenOn(false);
+    }
+  }, [screenOn, stopScreen]);
+
+  const grabScreenshot = useCallback(async (): Promise<Attachment | null> => {
+    const stream = screenStreamRef.current;
+    if (!stream) return null;
+    try {
+      const url = await captureFrame(stream);
+      return { id: newId(), kind: "image", name: "tela-atual.jpg", mediaType: "image/jpeg", url };
+    } catch {
+      return null;
+    }
+  }, []);
+
+  useEffect(() => () => stopScreen(), [stopScreen]);
+
+
 
 
   const testBridge = useCallback(async () => {
@@ -211,19 +318,43 @@ function Jarvis() {
   const send = useCallback(
     async (text: string) => {
       const clean = text.trim();
-      if (!clean || loading) return;
+      if ((!clean && attachments.length === 0) || loading) return;
       void primeAudio();
       cancelSpeech();
       setSpeaking(false);
-      const displayNext: Msg[] = [...messages, { role: "user", content: clean }];
+      const shot = screenOn ? await grabScreenshot() : null;
+      const outgoing: Attachment[] = shot ? [...attachments, shot] : attachments;
+      const userMsg: Msg = {
+        role: "user",
+        content: clean || (outgoing.length ? "(anexo)" : ""),
+        ...(outgoing.length ? { attachments: outgoing } : {}),
+      };
+      const displayNext: Msg[] = [...messages, userMsg];
       setMessages(displayNext);
       setInput("");
+      setAttachments([]);
+      setAttachOpen(false);
       setLoading(true);
       setToolLog([]);
       try {
         const currentMemories = memoriesRef.current;
-        // Build initial ModelMessage[] from the visible transcript.
-        let modelMessages: unknown[] = displayNext.map((m) => ({ role: m.role, content: m.content }));
+        // Build initial ModelMessage[] from the visible transcript (multimodal).
+        let modelMessages: unknown[] = displayNext.map((m) => {
+          const atts = m.attachments?.filter((a) => a.url) ?? [];
+          if (m.role !== "user" || !atts.length) return { role: m.role, content: m.content };
+          return {
+            role: "user",
+            content: [
+              { type: "text", text: m.content },
+              ...atts.map((a) =>
+                a.kind === "image"
+                  ? { type: "image", image: a.url }
+                  : { type: "file", data: a.url, mediaType: a.mediaType, filename: a.name },
+              ),
+            ],
+          };
+        });
+
         let finalText = "";
         const MAX_ROUNDS = 6;
         for (let round = 0; round < MAX_ROUNDS; round++) {
@@ -292,12 +423,22 @@ function Jarvis() {
         setTimeout(() => inputRef.current?.focus(), 0);
       }
     },
-    [ask, extract, loading, messages, voiceOn, bridgeStatus],
+    [ask, extract, loading, messages, voiceOn, bridgeStatus, attachments, screenOn, grabScreenshot],
   );
 
 
   const speech = useSpeech((finalText) => {
     void send(finalText);
+  });
+
+  // Ativação por "JARVIS" ou duas palmas: liga o microfone principal.
+  const wake = useWake({
+    mode: wakeMode,
+    paused: speech.listening || loading || speaking,
+    onWake: () => {
+      void primeAudio();
+      if (!speech.listening) speech.start();
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -322,10 +463,13 @@ function Jarvis() {
     if (speech.listening) return { label: "OUVINDO", color: "text-gold text-glow-gold" };
     if (loading) return { label: "PROCESSANDO", color: "text-hud text-glow" };
     if (speaking) return { label: "RESPONDENDO", color: "text-hud text-glow" };
+    if (wakeMode !== "off" && wake.armed) return { label: "AGUARDANDO “JARVIS”", color: "text-hud/80 text-glow" };
     return { label: "ONLINE", color: "text-hud/80 text-glow" };
-  }, [speech.listening, loading, speaking]);
+  }, [speech.listening, loading, speaking, wakeMode, wake.armed]);
 
   const reactorActive = speech.listening || loading || speaking;
+
+
 
   return (
     <div className="relative min-h-screen overflow-hidden">
@@ -351,10 +495,24 @@ function Jarvis() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <div className={cn("hidden font-mono text-xs tracking-widest sm:block", status.color)}>
               ● {status.label}
             </div>
+            <IconButton
+              title={wakeMode === "off" ? "Ativação por voz/palmas (desligada)" : `Ativação: ${wakeMode}`}
+              onClick={() => setWakeOpen((o) => !o)}
+              active={wakeMode !== "off"}
+            >
+              <Radio size={16} />
+            </IconButton>
+            <IconButton
+              title={screenOn ? "Parar visão da tela" : "Ativar visão da tela"}
+              onClick={() => void toggleScreen()}
+              active={screenOn}
+            >
+              {screenOn ? <Monitor size={16} /> : <MonitorOff size={16} />}
+            </IconButton>
             <IconButton
               title={voiceOn ? "Desligar voz" : "Ligar voz"}
               onClick={() => {
@@ -366,6 +524,7 @@ function Jarvis() {
             >
               {voiceOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </IconButton>
+
             <IconButton
               title={`Memória (${memories.length})`}
               onClick={() => setMemoryOpen((o) => !o)}
@@ -385,6 +544,56 @@ function Jarvis() {
             </IconButton>
           </div>
         </header>
+
+        {wakeOpen && (
+          <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
+                Ativação sem as mãos
+              </h2>
+              <button type="button" onClick={() => setWakeOpen(false)} className="text-hud/60 hover:text-hud">
+                <X size={14} />
+              </button>
+            </div>
+            <p className="mb-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              Escolha como me chamar, senhor: dizendo <span className="text-hud">“JARVIS”</span>, batendo{" "}
+              <span className="text-hud">duas palmas</span>, ou os dois. O microfone fica escutando em segundo
+              plano neste navegador e abre a captação de voz automaticamente.
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {([
+                { v: "off", label: "Desligado" },
+                { v: "word", label: "Palavra “Jarvis”" },
+                { v: "clap", label: "Duas palmas" },
+                { v: "both", label: "Ambos" },
+              ] as { v: WakeMode; label: string }[]).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => { void primeAudio(); setWakeMode(o.v); }}
+                  className={cn(
+                    "rounded border px-2 py-2 font-mono text-[10px] transition",
+                    wakeMode === o.v
+                      ? "border-hud bg-hud/15 text-hud shadow-hud"
+                      : "border-hud/25 text-muted-foreground hover:text-hud",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 font-mono text-[10px] text-muted-foreground">
+              Estado:{" "}
+              <span className={wake.armed ? "text-hud" : "text-muted-foreground"}>
+                {wakeMode === "off" ? "inativo" : wake.armed ? "escutando gatilho" : "iniciando…"}
+              </span>
+              {wake.claps === 1 && <span className="text-gold"> • uma palma detectada…</span>}
+            </p>
+            {wake.error && <p className="mt-1 font-mono text-[10px] text-gold">{wake.error}</p>}
+          </div>
+        )}
+
+
 
         {bridgeOpen && (
           <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
@@ -613,16 +822,108 @@ ngrok http 7842`}
         </div>
 
         {/* Composer */}
-        <form onSubmit={handleSubmit} className="mt-4 flex items-end gap-2">
+        {(attachments.length > 0 || attachOpen || screenOn || screenError) && (
+          <div className="mt-4 rounded-md border border-hud/25 bg-card/50 p-3 backdrop-blur-sm">
+            {screenOn && (
+              <p className="mb-2 flex items-center gap-2 font-mono text-[10px] text-hud">
+                <Camera size={12} /> Visão de tela ativa — um print atual acompanha cada mensagem.
+              </p>
+            )}
+            {attachOpen && (
+              <div className="mb-2 flex flex-col gap-2 sm:flex-row">
+                <div className="flex flex-1 items-center gap-2">
+                  <Link2 size={14} className="shrink-0 text-hud/70" />
+                  <input
+                    value={linkInput}
+                    onChange={(e) => setLinkInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLink(); } }}
+                    placeholder="Cole um link de imagem ou vídeo (https://...)"
+                    className="min-w-0 flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={addLink}
+                  className="shrink-0 rounded border border-hud/40 bg-hud/10 px-3 py-2 font-mono text-[10px] text-hud hover:bg-hud/20"
+                >
+                  Anexar link
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  className="shrink-0 rounded border border-hud/40 px-3 py-2 font-mono text-[10px] text-hud hover:bg-hud/10"
+                >
+                  Escolher arquivos
+                </button>
+              </div>
+            )}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {attachments.map((a) => (
+                  <div
+                    key={a.id}
+                    className="group relative flex items-center gap-2 rounded border border-hud/30 bg-hud/5 px-2 py-1.5"
+                  >
+                    {a.kind === "image" && a.url ? (
+                      <img src={a.url} alt={a.name} className="h-10 w-10 rounded object-cover" />
+                    ) : a.kind === "video" ? (
+                      <FileVideo size={16} className="text-hud" />
+                    ) : (
+                      <FileText size={16} className="text-hud" />
+                    )}
+                    <span className="max-w-[140px] truncate font-mono text-[10px] text-foreground/80">
+                      {a.name}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeAttachment(a.id)}
+                      aria-label="Remover anexo"
+                      className="text-hud/60 hover:text-gold"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {screenError && <p className="mt-2 font-mono text-[10px] text-gold">{screenError}</p>}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="mt-3 flex items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            multiple
+            accept="image/*,video/*,application/pdf"
+            className="hidden"
+            onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }}
+          />
+          <button
+            type="button"
+            onClick={() => setAttachOpen((o) => !o)}
+            aria-label="Anexar arquivo ou link"
+            title="Anexar imagem, vídeo, PDF ou link"
+            className={cn(
+              "flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
+              attachOpen || attachments.length
+                ? "border-hud bg-hud/20 text-hud shadow-hud"
+                : "border-hud/40 bg-hud/10 text-hud hover:bg-hud/20 hover:shadow-hud",
+            )}
+          >
+            <Paperclip size={18} />
+          </button>
           {speech.supported && (
             <button
               type="button"
               onClick={() => {
                 void primeAudio();
-                speech.listening ? speech.stop() : speech.start();
+                if (speech.listening) speech.stop();
+                else speech.start();
               }}
               disabled={loading}
               aria-label={speech.listening ? "Parar" : "Falar"}
+              title={speech.listening ? "Parar de ouvir" : "Falar"}
               className={cn(
                 "flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
                 speech.listening
@@ -634,27 +935,26 @@ ngrok http 7842`}
               {speech.listening ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
           )}
-          <div className="relative flex-1">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Fale comigo, senhor..."
-              rows={1}
-              disabled={loading}
-              className="min-h-[48px] w-full resize-none rounded-md border border-hud/30 bg-input/60 px-4 py-3 font-mono text-sm text-foreground placeholder:text-muted-foreground/60 focus:border-hud focus:outline-none focus:ring-1 focus:ring-hud"
-            />
-          </div>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder="Fale comigo, senhor..."
+            rows={1}
+            disabled={loading}
+            className="h-12 min-w-0 flex-1 resize-none rounded-md border border-hud/30 bg-input/60 px-4 py-3 font-mono text-sm leading-6 text-foreground placeholder:text-muted-foreground/60 focus:border-hud focus:outline-none focus:ring-1 focus:ring-hud"
+          />
           <button
             type="submit"
-            disabled={loading || !input.trim()}
+            disabled={loading || (!input.trim() && attachments.length === 0)}
             aria-label="Enviar"
             className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud bg-hud/20 text-hud transition hover:bg-hud/30 hover:shadow-hud disabled:opacity-40"
           >
             <Send size={18} />
           </button>
         </form>
+
 
         {!speech.supported && (
           <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">

@@ -35,6 +35,11 @@ Ferramentas LOCAIS (bridge na máquina do usuário — USE quando ele pedir aç�
 - fs_read — lê um arquivo do disco do usuário.
 - fs_write — escreve/anexa um arquivo no disco do usuário.
 - fs_list — lista o conteúdo de um diretório.
+- open_app — abre um APLICATIVO, arquivo ou NAVEGADOR/URL na máquina do usuário. Ex: target "Google Chrome", "Spotify", "code", "https://youtube.com". Use isto (não shell_exec) quando o senhor pedir "abra o Chrome", "abra o YouTube", "abra o VS Code".
+
+Visão (imagens, vídeos e tela):
+- O senhor pode anexar imagens/vídeos/PDFs ou colar links de mídia; eles chegam junto da mensagem. Analise-os de fato e descreva/oriente com precisão.
+- Quando a "visão de tela" está ativa, cada mensagem traz um print atual da tela do computador do senhor. Use-a para orientar passo a passo o que ele deve clicar/fazer, referindo-se ao que está visível.
 
 Regras de uso das ferramentas locais:
 - Antes de comandos destrutivos (rm, mv sobre arquivos importantes, git reset --hard, drop database), pergunte confirmação ao senhor em uma frase curta.
@@ -46,7 +51,8 @@ Regras gerais:
 - Nunca chute datas, cotações, ou o conteúdo de arquivos — chame a ferramenta.
 - Depois de qualquer ferramenta, sintetize em 1-3 frases.`;
 
-const CLIENT_TOOL_NAMES = new Set(["shell_exec", "fs_read", "fs_write", "fs_list"]);
+const CLIENT_TOOL_NAMES = new Set(["shell_exec", "fs_read", "fs_write", "fs_list", "open_app"]);
+
 
 function buildSystem(memories: string[], hasBridge: boolean): string {
   const now = new Date();
@@ -230,6 +236,14 @@ export const askJarvis = createServerFn({ method: "POST" })
       description: "Lista o conteúdo de um diretório na máquina do usuário.",
       inputSchema: z.object({ path: z.string() }),
     });
+    const open_app = tool({
+      description:
+        "Abre um aplicativo, arquivo ou URL/navegador na máquina do usuário. Use para 'abra o Chrome', 'abra o Spotify', 'abra o YouTube'.",
+      inputSchema: z.object({
+        target: z.string().describe("Nome do app (ex: 'Google Chrome', 'Spotify', 'code'), caminho de arquivo, ou URL http(s)."),
+        args: z.array(z.string()).optional().describe("Argumentos extras, opcional."),
+      }),
+    });
 
     try {
       const result = await generateText({
@@ -237,8 +251,9 @@ export const askJarvis = createServerFn({ method: "POST" })
         system: buildSystem(data.memories, data.hasBridge),
         messages: data.messages as ModelMessage[],
         tools: data.hasBridge
-          ? { web_search, get_datetime, fetch_url, run_js, shell_exec, fs_read, fs_write, fs_list }
+          ? { web_search, get_datetime, fetch_url, run_js, shell_exec, fs_read, fs_write, fs_list, open_app }
           : { web_search, get_datetime, fetch_url, run_js },
+
         stopWhen: stepCountIs(12),
       });
 

@@ -26,11 +26,16 @@ Endpoints:
 """
 from __future__ import annotations
 
+import json
+import os
+import secrets
+import shlex
 import socket
 import subprocess
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
 
 HOST = os.environ.get("JARVIS_HOST", "127.0.0.1")
 PORT = int(os.environ.get("JARVIS_PORT", "7842"))
@@ -131,6 +136,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._write(body)
             if self.path == "/list":
                 return self._list(body)
+            if self.path == "/open":
+                return self._open(body)
+
         except Exception as exc:  # noqa: BLE001
             return _json(self, 500, {"error": str(exc)})
         _json(self, 404, {"error": "not found"})
@@ -227,6 +235,61 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 continue
         return _json(self, 200, {"path": str(p), "entries": entries})
+
+    def _open(self, body: dict) -> None:
+        """Abre um aplicativo, arquivo ou URL no ambiente gráfico do usuário."""
+        target = body.get("target")
+        if not target or not isinstance(target, str):
+            return _json(self, 400, {"error": "target required"})
+        extra = body.get("args") or []
+        if isinstance(extra, str):
+            extra = shlex.split(extra)
+        extra = [str(a) for a in extra if isinstance(a, (str, int, float))]
+
+        plat = sys.platform
+        attempts: list[list[str]] = []
+        is_url = target.startswith(("http://", "https://"))
+        if plat == "darwin":
+            if is_url:
+                attempts.append(["open", target, *extra])
+            else:
+                attempts.append(["open", "-a", target, *extra])
+                attempts.append(["open", target, *extra])
+        elif plat.startswith("win"):
+            attempts.append(["cmd", "/c", "start", "", target, *extra])
+        else:
+            if is_url:
+                attempts.append(["xdg-open", target])
+            else:
+                attempts.append([target, *extra])
+                attempts.append(["gtk-launch", target])
+                attempts.append(["xdg-open", target])
+
+        errors = []
+        for cmd in attempts:
+            try:
+                proc = subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    start_new_session=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"{cmd[0]}: {exc}")
+                continue
+            try:
+                proc.wait(timeout=1.5)
+                if proc.returncode not in (0, None):
+                    err = (proc.stderr.read().decode("utf-8", "replace") if proc.stderr else "")
+                    errors.append(f"{' '.join(cmd)} -> exit {proc.returncode} {err.strip()}")
+                    continue
+            except subprocess.TimeoutExpired:
+                pass  # segue rodando: app aberto
+            return _json(self, 200, {"ok": True, "opened": target, "via": cmd[0], "platform": plat})
+
+        return _json(self, 200, {"ok": False, "target": target, "platform": plat, "errors": errors})
+
+
 
 
 def main() -> None:
