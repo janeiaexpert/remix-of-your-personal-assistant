@@ -186,14 +186,16 @@ function Jarvis() {
     setBridge(null); bridgeRef.current = null; saveBridge(null); setBridgeStatus("offline");
   }, []);
 
-  // QR code de pareamento (URL + token) para escanear no celular
+  // QR code de pareamento (URL + token) para escanear no celular.
+  // Modo "lan": IP local via http (só funciona se a página também for http).
+  // Modo "tunnel": URL https de um túnel (cloudflared/ngrok) apontando para o agente.
+  const qrTarget = (qrMode === "tunnel" ? tunnelUrl : bridgeUrl).trim().replace(/\/$/, "");
   useEffect(() => {
     if (!qrOpen) { setQrImage(null); return; }
-    const url = bridgeUrl.trim();
     const token = bridgeToken.trim();
-    if (!url || !token) { setQrImage(null); return; }
+    if (!qrTarget || !token) { setQrImage(null); return; }
     let alive = true;
-    void QRCode.toDataURL(pairingUrl({ url, token }), {
+    void QRCode.toDataURL(pairingUrl({ url: qrTarget, token }), {
       width: 320,
       margin: 1,
       errorCorrectionLevel: "M",
@@ -202,7 +204,8 @@ function Jarvis() {
       .then((data) => { if (alive) setQrImage(data); })
       .catch(() => { if (alive) setQrImage(null); });
     return () => { alive = false; };
-  }, [qrOpen, bridgeUrl, bridgeToken]);
+  }, [qrOpen, qrTarget, bridgeToken]);
+
 
 
   const send = useCallback(
