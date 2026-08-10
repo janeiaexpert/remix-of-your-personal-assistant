@@ -40,6 +40,13 @@ function isMobileDevice() {
 function isLoopback(url: string) {
   return /^(https?:\/\/)?(127\.0\.0\.1|localhost)(:\d+)?\/?$/i.test(url.trim());
 }
+function isHttpUrl(url: string) {
+  return /^http:\/\//i.test(url.trim());
+}
+function pageIsHttps() {
+  return typeof window !== "undefined" && window.location.protocol === "https:";
+}
+
 function mergeMemories(existing: string[], incoming: string[]): string[] {
   const seen = new Set(existing.map(normalize));
   const merged = [...existing];
