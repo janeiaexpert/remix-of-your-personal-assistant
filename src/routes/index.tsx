@@ -1071,9 +1071,26 @@ function MessageBubble({ message, ghost = false }: { message: Msg; ghost?: boole
             J.A.R.V.I.S.
           </div>
         )}
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-2">
+            {message.attachments.map((a) => (
+              <div key={a.id} className="flex items-center gap-1.5 rounded border border-hud/25 bg-hud/5 px-2 py-1">
+                {a.kind === "image" && a.url ? (
+                  <img src={a.url} alt={a.name} className="h-12 w-12 rounded object-cover" />
+                ) : a.kind === "video" ? (
+                  <FileVideo size={14} className="text-hud" />
+                ) : (
+                  <FileText size={14} className="text-hud" />
+                )}
+                <span className="max-w-[120px] truncate font-mono text-[10px] text-foreground/70">{a.name}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="prose prose-sm prose-invert max-w-none prose-p:my-1 prose-headings:my-2">
           <ReactMarkdown>{message.content}</ReactMarkdown>
         </div>
+
       </div>
     </div>
   );
