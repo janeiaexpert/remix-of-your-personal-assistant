@@ -96,6 +96,9 @@ function Jarvis() {
   const [toolLog, setToolLog] = useState<string[]>([]);
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
+  const [qrMode, setQrMode] = useState<"lan" | "tunnel">("lan");
+  const [tunnelUrl, setTunnelUrl] = useState("");
+
   const bridgeRef = useRef<BridgeConfig | null>(null);
   const memoriesRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
