@@ -268,10 +268,10 @@ export const askJarvis = createServerFn({ method: "POST" })
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("429")) {
+      if (/429|rate.?limit/i.test(msg)) {
         return { text: "Perdão, senhor — circuitos sobrecarregados. Tente novamente em instantes.", responseMessagesJson: "[]", pending: [] as { id: string; name: string; inputJson: string }[] };
       }
-      if (msg.includes("402")) {
+      if (/402|payment required|insufficient|credits/i.test(msg)) {
         return { text: "Créditos esgotados, senhor. Recarregue no painel do Lovable.", responseMessagesJson: "[]", pending: [] as { id: string; name: string; inputJson: string }[] };
       }
       throw err;
