@@ -1008,13 +1008,22 @@ ngrok http 7842`}
                   >
                     {a.kind === "image" && a.url ? (
                       <img src={a.url} alt={a.name} className="h-10 w-10 rounded object-cover" />
+                    ) : a.kind === "video" && a.frames?.[0] ? (
+                      <img src={a.frames[0]} alt={a.name} className="h-10 w-10 rounded object-cover" />
                     ) : a.kind === "video" ? (
                       <FileVideo size={16} className="text-hud" />
+                    ) : a.kind === "audio" ? (
+                      <Music size={16} className="text-hud" />
                     ) : (
                       <FileText size={16} className="text-hud" />
                     )}
-                    <span className="max-w-[140px] truncate font-mono text-[10px] text-foreground/80">
-                      {a.name}
+                    <span className="flex min-w-0 flex-col">
+                      <span className="max-w-[150px] truncate font-mono text-[10px] text-foreground/80">
+                        {a.name}
+                      </span>
+                      <span className="font-mono text-[9px] text-hud/60">
+                        {[a.kind, formatBytes(a.size), a.note].filter(Boolean).join(" · ")}
+                      </span>
                     </span>
                     <button
                       type="button"
@@ -1037,10 +1046,20 @@ ngrok http 7842`}
             ref={fileRef}
             type="file"
             multiple
-            accept="image/*,video/*,application/pdf"
+            accept={ACCEPT_ATTR}
             className="hidden"
             onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }}
           />
+          <button
+            type="button"
+            onClick={() => void takePhoto()}
+            aria-label="Tirar foto com a câmera"
+            title="Tirar foto com a câmera"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+          >
+            <Aperture size={18} />
+          </button>
+
           <button
             type="button"
             onClick={() => setAttachOpen((o) => !o)}
