@@ -184,13 +184,17 @@ function Jarvis() {
 
   useEffect(() => {
     if (!hydrated) return;
-    // Não persistimos data: URLs (estouram a quota) — apenas o rótulo do anexo.
+    // Não persistimos data: URLs nem quadros (estouram a quota) — apenas o rótulo.
     const slim = messages.map((m) => ({
       ...m,
-      attachments: m.attachments?.map((a) =>
-        a.url.startsWith("data:") ? { ...a, url: "" } : a,
-      ),
+      attachments: m.attachments?.map((a) => ({
+        ...a,
+        url: a.url.startsWith("data:") ? "" : a.url,
+        frames: undefined,
+        transcript: a.transcript ? a.transcript.slice(0, 2000) : undefined,
+      })),
     }));
+
     try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(slim)); } catch { /* quota */ }
   }, [messages, hydrated]);
 
