@@ -30,6 +30,7 @@ import json
 import os
 import secrets
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
@@ -150,14 +151,24 @@ class Handler(BaseHTTPRequestHandler):
         cwd = body.get("cwd") or str(BASE_CWD)
         timeout = min(int(body.get("timeout") or 30), 300)
         try:
+            if sys.platform == "win32":
+                # Windows: usa PowerShell, não cmd.exe.
+                shell_exe = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+                run_args: dict = {
+                    "args": [shell_exe, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", cmd],
+                    "shell": False,
+                }
+            else:
+                run_args = {"args": cmd, "shell": True}
             proc = subprocess.run(
-                cmd,
-                shell=True,
+                run_args["args"],
+                shell=run_args["shell"],
                 cwd=cwd,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
             )
+
             return _json(
                 self,
                 200,

@@ -4,16 +4,19 @@ import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
-  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera,
+  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
+import { transcribeAudio } from "@/lib/media.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { loadBridge, saveBridge, loadBridgeDraft, saveBridgeDraft, health, runTool, pairingUrl, readPairingFromHash, type BridgeConfig } from "@/lib/bridge";
 import {
-  type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl,
-  startScreenShare, captureFrame,
+  type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl, fileToText,
+  startScreenShare, captureFrame, startCamera, extractVideoFrames,
+  validateFile, formatBytes, ACCEPT_ATTR,
 } from "@/lib/vision";
 import { useWake, type WakeMode } from "@/lib/wake";
+
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 
@@ -87,6 +90,8 @@ function loadMessages(): Msg[] {
 function Jarvis() {
   const ask = useServerFn(askJarvis);
   const extract = useServerFn(extractMemories);
+  const transcribe = useServerFn(transcribeAudio);
+
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
   const [memories, setMemories] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
@@ -179,13 +184,17 @@ function Jarvis() {
 
   useEffect(() => {
     if (!hydrated) return;
-    // Não persistimos data: URLs (estouram a quota) — apenas o rótulo do anexo.
+    // Não persistimos data: URLs nem quadros (estouram a quota) — apenas o rótulo.
     const slim = messages.map((m) => ({
       ...m,
-      attachments: m.attachments?.map((a) =>
-        a.url.startsWith("data:") ? { ...a, url: "" } : a,
-      ),
+      attachments: m.attachments?.map((a) => ({
+        ...a,
+        url: a.url.startsWith("data:") ? "" : a.url,
+        frames: undefined,
+        transcript: a.transcript ? a.transcript.slice(0, 2000) : undefined,
+      })),
     }));
+
     try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(slim)); } catch { /* quota */ }
   }, [messages, hydrated]);
 
@@ -208,33 +217,155 @@ function Jarvis() {
   // --- Anexos --------------------------------------------------------------
   const addFiles = useCallback(async (files: FileList | null) => {
     if (!files?.length) return;
-    const next: Attachment[] = [];
+    setScreenError(null);
+    const errors: string[] = [];
     for (const file of Array.from(files).slice(0, 6)) {
-      if (file.size > 18 * 1024 * 1024) {
-        setScreenError(`${file.name}: acima de 18 MB, senhor.`);
-        continue;
-      }
-      const url = await fileToDataUrl(file);
-      const mediaType = file.type || guessMimeFromUrl(file.name);
-      next.push({ id: newId(), kind: kindFromMime(mediaType, file.name), name: file.name, mediaType, url });
-    }
-    if (next.length) setAttachments((a) => [...a, ...next]);
-  }, []);
+      const invalid = validateFile(file);
+      if (invalid) { errors.push(invalid); continue; }
 
-  const addLink = useCallback(() => {
+      const mediaType = (file.type || guessMimeFromUrl(file.name)).toLowerCase();
+      const kind = kindFromMime(mediaType, file.name);
+      const id = newId();
+      const base: Attachment = { id, kind, name: file.name, mediaType, url: "", size: file.size };
+
+      try {
+        if (kind === "file") {
+          // Texto simples: extraímos o conteúdo (o modelo não aceita o binário).
+          const text = await fileToText(file);
+          setAttachments((a) => [
+            ...a,
+            { ...base, transcript: text.slice(0, 40000), note: "texto extraído" },
+          ]);
+          continue;
+        }
+
+        const url = await fileToDataUrl(file);
+
+        if (kind === "audio") {
+          setAttachments((a) => [...a, { ...base, url, note: "transcrevendo…" }]);
+          const res = await transcribe({ data: { dataUrl: url, filename: file.name } });
+          if (res.error || !res.text) {
+            setAttachments((a) => a.filter((x) => x.id !== id));
+            errors.push(`${file.name}: ${res.error ?? "não foi possível transcrever."}`);
+            setScreenError(errors.join(" • "));
+            continue;
+          }
+          setAttachments((a) =>
+            a.map((x) => (x.id === id ? { ...x, transcript: res.text, note: "transcrito" } : x)),
+          );
+          continue;
+        }
+
+        if (kind === "video") {
+          setAttachments((a) => [...a, { ...base, url, note: "extraindo quadros…" }]);
+          try {
+            const frames = await extractVideoFrames(file, 4);
+            setAttachments((a) =>
+              a.map((x) =>
+                x.id === id ? { ...x, frames, note: `${frames.length} quadros analisados` } : x,
+              ),
+            );
+          } catch (e) {
+            // Codec não suportado pelo navegador: mantemos o anexo e avisamos o modelo.
+            setAttachments((a) =>
+              a.map((x) =>
+                x.id === id
+                  ? { ...x, note: "quadros indisponíveis neste navegador" }
+                  : x,
+              ),
+            );
+            errors.push(
+              `${file.name}: não consegui extrair quadros (${e instanceof Error ? e.message : "codec"}) — descreva o vídeo ou envie um print.`,
+            );
+          }
+          continue;
+        }
+
+        // Imagem ou PDF: vão direto ao modelo no formato nativo.
+        setAttachments((a) => [...a, { ...base, url }]);
+      } catch (e) {
+        errors.push(`${file.name}: ${e instanceof Error ? e.message : "falha ao processar."}`);
+      }
+    }
+    if (errors.length) setScreenError(errors.join(" • "));
+  }, [transcribe]);
+
+  const addLink = useCallback(async () => {
     const url = linkInput.trim();
     if (!/^https?:\/\//i.test(url)) { setScreenError("Cole um link http(s) válido."); return; }
     const mediaType = guessMimeFromUrl(url);
-    setAttachments((a) => [
-      ...a,
-      { id: newId(), kind: kindFromMime(mediaType, url), name: url.split("/").pop() || url, mediaType, url, fromLink: true },
-    ]);
+    const kind = kindFromMime(mediaType, url);
+    const id = newId();
+    const name = url.split("/").pop() || url;
     setLinkInput("");
     setScreenError(null);
-  }, [linkInput]);
+
+    if (kind === "video") {
+      setAttachments((a) => [
+        ...a,
+        { id, kind, name, mediaType, url, fromLink: true, note: "extraindo quadros…" },
+      ]);
+      try {
+        const frames = await extractVideoFrames(url, 4);
+        setAttachments((a) =>
+          a.map((x) => (x.id === id ? { ...x, frames, note: `${frames.length} quadros analisados` } : x)),
+        );
+      } catch {
+        setAttachments((a) =>
+          a.map((x) =>
+            x.id === id
+              ? { ...x, kind: "file", note: "vídeo remoto sem acesso direto — analisarei pela URL" }
+              : x,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (kind === "audio") {
+      setAttachments((a) => [...a, { id, kind, name, mediaType, url, fromLink: true, note: "baixando…" }]);
+      try {
+        const blob = await fetch(url).then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.blob();
+        });
+        const dataUrl = await fileToDataUrl(blob);
+        const res = await transcribe({ data: { dataUrl, filename: name } });
+        if (res.error || !res.text) throw new Error(res.error ?? "sem transcrição");
+        setAttachments((a) =>
+          a.map((x) => (x.id === id ? { ...x, size: blob.size, transcript: res.text, note: "transcrito" } : x)),
+        );
+      } catch (e) {
+        setAttachments((a) => a.filter((x) => x.id !== id));
+        setScreenError(`${name}: não foi possível transcrever o áudio remoto (${e instanceof Error ? e.message : "erro"}).`);
+      }
+      return;
+    }
+
+    setAttachments((a) => [...a, { id, kind, name, mediaType, url, fromLink: true }]);
+  }, [linkInput, transcribe]);
 
   const removeAttachment = (id: string) =>
     setAttachments((a) => a.filter((x) => x.id !== id));
+
+  // --- Câmera --------------------------------------------------------------
+  const takePhoto = useCallback(async () => {
+    setScreenError(null);
+    let stream: MediaStream | null = null;
+    try {
+      stream = await startCamera(isMobile ? "environment" : "user");
+      const url = await captureFrame(stream, 1280);
+      setAttachments((a) => [
+        ...a,
+        { id: newId(), kind: "image", name: `foto-${Date.now()}.jpg`, mediaType: "image/jpeg", url, note: "câmera" },
+      ]);
+    } catch (e) {
+      setScreenError(e instanceof Error ? e.message : "Câmera indisponível.");
+    } finally {
+      stream?.getTracks().forEach((t) => t.stop());
+    }
+  }, [isMobile]);
+
 
   // --- Visão da tela -------------------------------------------------------
   const stopScreen = useCallback(() => {
@@ -340,20 +471,39 @@ function Jarvis() {
         const currentMemories = memoriesRef.current;
         // Build initial ModelMessage[] from the visible transcript (multimodal).
         let modelMessages: unknown[] = displayNext.map((m) => {
-          const atts = m.attachments?.filter((a) => a.url) ?? [];
+          const atts = m.attachments ?? [];
           if (m.role !== "user" || !atts.length) return { role: m.role, content: m.content };
-          return {
-            role: "user",
-            content: [
-              { type: "text", text: m.content },
-              ...atts.map((a) =>
-                a.kind === "image"
-                  ? { type: "image", image: a.url }
-                  : { type: "file", data: a.url, mediaType: a.mediaType, filename: a.name },
-              ),
-            ],
-          };
+          const parts: unknown[] = [{ type: "text", text: m.content }];
+          for (const a of atts) {
+            if (a.kind === "image" && a.url) {
+              parts.push({ type: "image", image: a.url });
+            } else if (a.kind === "pdf" && a.url) {
+              parts.push({ type: "file", data: a.url, mediaType: "application/pdf", filename: a.name });
+            } else if (a.kind === "video") {
+              // Vídeo bruto não é aceito no chat: enviamos os quadros extraídos.
+              for (const f of a.frames ?? []) parts.push({ type: "image", image: f });
+              parts.push({
+                type: "text",
+                text: a.frames?.length
+                  ? `[Vídeo "${a.name}": ${a.frames.length} quadros acima, em ordem cronológica.]`
+                  : `[Vídeo "${a.name}" em ${a.url} — não consegui extrair quadros; use fetch_url/web_search se ajudar.]`,
+              });
+            } else if (a.kind === "audio") {
+              parts.push({
+                type: "text",
+                text: a.transcript
+                  ? `[Áudio "${a.name}" — transcrição]\n${a.transcript}`
+                  : `[Áudio "${a.name}" sem transcrição disponível.]`,
+              });
+            } else if (a.transcript) {
+              parts.push({ type: "text", text: `[Arquivo "${a.name}"]\n${a.transcript}` });
+            } else if (a.url) {
+              parts.push({ type: "text", text: `[Link para análise: ${a.url}] Use fetch_url para ler o conteúdo.` });
+            }
+          }
+          return { role: "user", content: parts };
         });
+
 
         let finalText = "";
         const MAX_ROUNDS = 6;
@@ -837,7 +987,7 @@ ngrok http 7842`}
                     value={linkInput}
                     onChange={(e) => setLinkInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLink(); } }}
-                    placeholder="Cole um link de imagem ou vídeo (https://...)"
+                    placeholder="Cole um link de imagem, vídeo, áudio, PDF ou página (https://...)"
                     className="min-w-0 flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
                   />
                 </div>
@@ -866,13 +1016,22 @@ ngrok http 7842`}
                   >
                     {a.kind === "image" && a.url ? (
                       <img src={a.url} alt={a.name} className="h-10 w-10 rounded object-cover" />
+                    ) : a.kind === "video" && a.frames?.[0] ? (
+                      <img src={a.frames[0]} alt={a.name} className="h-10 w-10 rounded object-cover" />
                     ) : a.kind === "video" ? (
                       <FileVideo size={16} className="text-hud" />
+                    ) : a.kind === "audio" ? (
+                      <Music size={16} className="text-hud" />
                     ) : (
                       <FileText size={16} className="text-hud" />
                     )}
-                    <span className="max-w-[140px] truncate font-mono text-[10px] text-foreground/80">
-                      {a.name}
+                    <span className="flex min-w-0 flex-col">
+                      <span className="max-w-[150px] truncate font-mono text-[10px] text-foreground/80">
+                        {a.name}
+                      </span>
+                      <span className="font-mono text-[9px] text-hud/60">
+                        {[a.kind, formatBytes(a.size), a.note].filter(Boolean).join(" · ")}
+                      </span>
                     </span>
                     <button
                       type="button"
@@ -895,15 +1054,25 @@ ngrok http 7842`}
             ref={fileRef}
             type="file"
             multiple
-            accept="image/*,video/*,application/pdf"
+            accept={ACCEPT_ATTR}
             className="hidden"
             onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }}
           />
           <button
             type="button"
+            onClick={() => void takePhoto()}
+            aria-label="Tirar foto com a câmera"
+            title="Tirar foto com a câmera"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+          >
+            <Aperture size={18} />
+          </button>
+
+          <button
+            type="button"
             onClick={() => setAttachOpen((o) => !o)}
             aria-label="Anexar arquivo ou link"
-            title="Anexar imagem, vídeo, PDF ou link"
+            title="Anexar imagem, vídeo, áudio, PDF, texto ou link"
             className={cn(
               "flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
               attachOpen || attachments.length
@@ -1079,6 +1248,8 @@ function MessageBubble({ message, ghost = false }: { message: Msg; ghost?: boole
                   <img src={a.url} alt={a.name} className="h-12 w-12 rounded object-cover" />
                 ) : a.kind === "video" ? (
                   <FileVideo size={14} className="text-hud" />
+                ) : a.kind === "audio" ? (
+                  <Music size={14} className="text-hud" />
                 ) : (
                   <FileText size={14} className="text-hud" />
                 )}
