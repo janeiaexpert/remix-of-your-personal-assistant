@@ -7,12 +7,12 @@ const TranscribeInput = z.object({
   filename: z.string().default("recording.webm"),
 });
 
-function parseDataUrl(dataUrl: string): { mediaType: string; bytes: Uint8Array } {
+function parseDataUrl(dataUrl: string): { mediaType: string; bytes: Uint8Array<ArrayBuffer> } {
   const m = dataUrl.match(/^data:([^;,]+);base64,(.*)$/s);
   if (!m) throw new Error("Formato de áudio inválido (esperado data: URL base64).");
   const mediaType = m[1];
   const bin = atob(m[2]);
-  const bytes = new Uint8Array(bin.length);
+  const bytes = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   return { mediaType, bytes };
 }
@@ -38,7 +38,7 @@ export const transcribeAudio = createServerFn({ method: "POST" })
     const key = process.env.LOVABLE_API_KEY;
     if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
-    let parsed: { mediaType: string; bytes: Uint8Array };
+    let parsed: { mediaType: string; bytes: Uint8Array<ArrayBuffer> };
     try {
       parsed = parseDataUrl(data.dataUrl);
     } catch (e) {
