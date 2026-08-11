@@ -69,8 +69,11 @@ export const transcribeAudio = createServerFn({ method: "POST" })
     });
     if (!res.ok) {
       const msg = await res.text().catch(() => "");
+      if (res.status === 402) return { text: "", error: "Créditos de IA esgotados — recarregue no painel do Lovable." };
+      if (res.status === 429) return { text: "", error: "Limite de requisições atingido — tente em instantes." };
       return { text: "", error: `Transcrição falhou (${res.status}): ${msg.slice(0, 300)}` };
     }
+
     const json = (await res.json()) as { text?: string };
     return { text: (json.text ?? "").trim(), error: null as string | null };
   });
