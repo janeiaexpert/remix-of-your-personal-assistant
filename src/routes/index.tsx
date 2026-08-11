@@ -213,33 +213,147 @@ function Jarvis() {
   // --- Anexos --------------------------------------------------------------
   const addFiles = useCallback(async (files: FileList | null) => {
     if (!files?.length) return;
-    const next: Attachment[] = [];
+    setScreenError(null);
+    const errors: string[] = [];
     for (const file of Array.from(files).slice(0, 6)) {
-      if (file.size > 18 * 1024 * 1024) {
-        setScreenError(`${file.name}: acima de 18 MB, senhor.`);
-        continue;
-      }
-      const url = await fileToDataUrl(file);
-      const mediaType = file.type || guessMimeFromUrl(file.name);
-      next.push({ id: newId(), kind: kindFromMime(mediaType, file.name), name: file.name, mediaType, url });
-    }
-    if (next.length) setAttachments((a) => [...a, ...next]);
-  }, []);
+      const invalid = validateFile(file);
+      if (invalid) { errors.push(invalid); continue; }
 
-  const addLink = useCallback(() => {
+      const mediaType = (file.type || guessMimeFromUrl(file.name)).toLowerCase();
+      const kind = kindFromMime(mediaType, file.name);
+      const id = newId();
+      const base: Attachment = { id, kind, name: file.name, mediaType, url: "", size: file.size };
+
+      try {
+        if (kind === "file") {
+          // Texto simples: extraímos o conteúdo (o modelo não aceita o binário).
+          const text = await fileToText(file);
+          setAttachments((a) => [
+            ...a,
+            { ...base, transcript: text.slice(0, 40000), note: "texto extraído" },
+          ]);
+          continue;
+        }
+
+        const url = await fileToDataUrl(file);
+
+        if (kind === "audio") {
+          setAttachments((a) => [...a, { ...base, url, note: "transcrevendo…" }]);
+          const res = await transcribe({ data: { dataUrl: url, filename: file.name } });
+          if (res.error || !res.text) {
+            setAttachments((a) => a.filter((x) => x.id !== id));
+            errors.push(`${file.name}: ${res.error ?? "não foi possível transcrever."}`);
+            setScreenError(errors.join(" • "));
+            continue;
+          }
+          setAttachments((a) =>
+            a.map((x) => (x.id === id ? { ...x, transcript: res.text, note: "transcrito" } : x)),
+          );
+          continue;
+        }
+
+        if (kind === "video") {
+          setAttachments((a) => [...a, { ...base, url, note: "extraindo quadros…" }]);
+          try {
+            const frames = await extractVideoFrames(file, 4);
+            setAttachments((a) =>
+              a.map((x) =>
+                x.id === id ? { ...x, frames, note: `${frames.length} quadros analisados` } : x,
+              ),
+            );
+          } catch (e) {
+            setAttachments((a) => a.filter((x) => x.id !== id));
+            errors.push(`${file.name}: ${e instanceof Error ? e.message : "falha ao ler vídeo."}`);
+            setScreenError(errors.join(" • "));
+          }
+          continue;
+        }
+
+        // Imagem ou PDF: vão direto ao modelo no formato nativo.
+        setAttachments((a) => [...a, { ...base, url }]);
+      } catch (e) {
+        errors.push(`${file.name}: ${e instanceof Error ? e.message : "falha ao processar."}`);
+      }
+    }
+    if (errors.length) setScreenError(errors.join(" • "));
+  }, [transcribe]);
+
+  const addLink = useCallback(async () => {
     const url = linkInput.trim();
     if (!/^https?:\/\//i.test(url)) { setScreenError("Cole um link http(s) válido."); return; }
     const mediaType = guessMimeFromUrl(url);
-    setAttachments((a) => [
-      ...a,
-      { id: newId(), kind: kindFromMime(mediaType, url), name: url.split("/").pop() || url, mediaType, url, fromLink: true },
-    ]);
+    const kind = kindFromMime(mediaType, url);
+    const id = newId();
+    const name = url.split("/").pop() || url;
     setLinkInput("");
     setScreenError(null);
-  }, [linkInput]);
+
+    if (kind === "video") {
+      setAttachments((a) => [
+        ...a,
+        { id, kind, name, mediaType, url, fromLink: true, note: "extraindo quadros…" },
+      ]);
+      try {
+        const frames = await extractVideoFrames(url, 4);
+        setAttachments((a) =>
+          a.map((x) => (x.id === id ? { ...x, frames, note: `${frames.length} quadros analisados` } : x)),
+        );
+      } catch {
+        setAttachments((a) =>
+          a.map((x) =>
+            x.id === id
+              ? { ...x, kind: "file", note: "vídeo remoto sem acesso direto — analisarei pela URL" }
+              : x,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (kind === "audio") {
+      setAttachments((a) => [...a, { id, kind, name, mediaType, url, fromLink: true, note: "baixando…" }]);
+      try {
+        const blob = await fetch(url).then((r) => {
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.blob();
+        });
+        const dataUrl = await fileToDataUrl(blob);
+        const res = await transcribe({ data: { dataUrl, filename: name } });
+        if (res.error || !res.text) throw new Error(res.error ?? "sem transcrição");
+        setAttachments((a) =>
+          a.map((x) => (x.id === id ? { ...x, size: blob.size, transcript: res.text, note: "transcrito" } : x)),
+        );
+      } catch (e) {
+        setAttachments((a) => a.filter((x) => x.id !== id));
+        setScreenError(`${name}: não foi possível transcrever o áudio remoto (${e instanceof Error ? e.message : "erro"}).`);
+      }
+      return;
+    }
+
+    setAttachments((a) => [...a, { id, kind, name, mediaType, url, fromLink: true }]);
+  }, [linkInput, transcribe]);
 
   const removeAttachment = (id: string) =>
     setAttachments((a) => a.filter((x) => x.id !== id));
+
+  // --- Câmera --------------------------------------------------------------
+  const takePhoto = useCallback(async () => {
+    setScreenError(null);
+    let stream: MediaStream | null = null;
+    try {
+      stream = await startCamera(isMobile ? "environment" : "user");
+      const url = await captureFrame(stream, 1280);
+      setAttachments((a) => [
+        ...a,
+        { id: newId(), kind: "image", name: `foto-${Date.now()}.jpg`, mediaType: "image/jpeg", url, note: "câmera" },
+      ]);
+    } catch (e) {
+      setScreenError(e instanceof Error ? e.message : "Câmera indisponível.");
+    } finally {
+      stream?.getTracks().forEach((t) => t.stop());
+    }
+  }, [isMobile]);
+
 
   // --- Visão da tela -------------------------------------------------------
   const stopScreen = useCallback(() => {
