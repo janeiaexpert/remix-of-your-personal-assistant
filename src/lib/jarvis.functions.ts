@@ -270,6 +270,7 @@ export const askJarvis = createServerFn({ method: "POST" })
       const e = err as { message?: string; statusCode?: number; responseBody?: string; cause?: { message?: string; statusCode?: number } };
       const status = e.statusCode ?? e.cause?.statusCode;
       const msg = [e.message, e.cause?.message, e.responseBody, String(status ?? "")].filter(Boolean).join(" ");
+      console.error("[jarvis] gateway error", { status, msg: msg.slice(0, 500), name: (err as Error)?.name });
       const empty = { responseMessagesJson: "[]", pending: [] as { id: string; name: string; inputJson: string }[] };
       if (status === 429 || /\b429\b|rate.?limit/i.test(msg)) {
         return { text: "Perdão, senhor — circuitos sobrecarregados. Tente novamente em instantes.", ...empty };
