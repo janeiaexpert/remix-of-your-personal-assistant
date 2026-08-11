@@ -459,20 +459,39 @@ function Jarvis() {
         const currentMemories = memoriesRef.current;
         // Build initial ModelMessage[] from the visible transcript (multimodal).
         let modelMessages: unknown[] = displayNext.map((m) => {
-          const atts = m.attachments?.filter((a) => a.url) ?? [];
+          const atts = m.attachments ?? [];
           if (m.role !== "user" || !atts.length) return { role: m.role, content: m.content };
-          return {
-            role: "user",
-            content: [
-              { type: "text", text: m.content },
-              ...atts.map((a) =>
-                a.kind === "image"
-                  ? { type: "image", image: a.url }
-                  : { type: "file", data: a.url, mediaType: a.mediaType, filename: a.name },
-              ),
-            ],
-          };
+          const parts: unknown[] = [{ type: "text", text: m.content }];
+          for (const a of atts) {
+            if (a.kind === "image" && a.url) {
+              parts.push({ type: "image", image: a.url });
+            } else if (a.kind === "pdf" && a.url) {
+              parts.push({ type: "file", data: a.url, mediaType: "application/pdf", filename: a.name });
+            } else if (a.kind === "video") {
+              // Vídeo bruto não é aceito no chat: enviamos os quadros extraídos.
+              for (const f of a.frames ?? []) parts.push({ type: "image", image: f });
+              parts.push({
+                type: "text",
+                text: a.frames?.length
+                  ? `[Vídeo "${a.name}": ${a.frames.length} quadros acima, em ordem cronológica.]`
+                  : `[Vídeo "${a.name}" em ${a.url} — não consegui extrair quadros; use fetch_url/web_search se ajudar.]`,
+              });
+            } else if (a.kind === "audio") {
+              parts.push({
+                type: "text",
+                text: a.transcript
+                  ? `[Áudio "${a.name}" — transcrição]\n${a.transcript}`
+                  : `[Áudio "${a.name}" sem transcrição disponível.]`,
+              });
+            } else if (a.transcript) {
+              parts.push({ type: "text", text: `[Arquivo "${a.name}"]\n${a.transcript}` });
+            } else if (a.url) {
+              parts.push({ type: "text", text: `[Link para análise: ${a.url}] Use fetch_url para ler o conteúdo.` });
+            }
+          }
+          return { role: "user", content: parts };
         });
+
 
         let finalText = "";
         const MAX_ROUNDS = 6;
