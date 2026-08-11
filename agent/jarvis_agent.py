@@ -30,6 +30,7 @@ import json
 import os
 import secrets
 import shlex
+import shutil
 import socket
 import subprocess
 import sys
