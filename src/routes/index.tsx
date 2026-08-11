@@ -90,6 +90,8 @@ function loadMessages(): Msg[] {
 function Jarvis() {
   const ask = useServerFn(askJarvis);
   const extract = useServerFn(extractMemories);
+  const transcribe = useServerFn(transcribeAudio);
+
   const [messages, setMessages] = useState<Msg[]>([GREETING]);
   const [memories, setMemories] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
