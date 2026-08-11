@@ -4,16 +4,19 @@ import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
-  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera,
+  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
+import { transcribeAudio } from "@/lib/media.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { loadBridge, saveBridge, loadBridgeDraft, saveBridgeDraft, health, runTool, pairingUrl, readPairingFromHash, type BridgeConfig } from "@/lib/bridge";
 import {
-  type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl,
-  startScreenShare, captureFrame,
+  type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl, fileToText,
+  startScreenShare, captureFrame, startCamera, extractVideoFrames,
+  validateFile, formatBytes, ACCEPT_ATTR,
 } from "@/lib/vision";
 import { useWake, type WakeMode } from "@/lib/wake";
+
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 
