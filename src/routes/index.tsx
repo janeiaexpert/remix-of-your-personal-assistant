@@ -266,9 +266,17 @@ function Jarvis() {
               ),
             );
           } catch (e) {
-            setAttachments((a) => a.filter((x) => x.id !== id));
-            errors.push(`${file.name}: ${e instanceof Error ? e.message : "falha ao ler vídeo."}`);
-            setScreenError(errors.join(" • "));
+            // Codec não suportado pelo navegador: mantemos o anexo e avisamos o modelo.
+            setAttachments((a) =>
+              a.map((x) =>
+                x.id === id
+                  ? { ...x, note: "quadros indisponíveis neste navegador" }
+                  : x,
+              ),
+            );
+            errors.push(
+              `${file.name}: não consegui extrair quadros (${e instanceof Error ? e.message : "codec"}) — descreva o vídeo ou envie um print.`,
+            );
           }
           continue;
         }
