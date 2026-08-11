@@ -979,7 +979,7 @@ ngrok http 7842`}
                     value={linkInput}
                     onChange={(e) => setLinkInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addLink(); } }}
-                    placeholder="Cole um link de imagem ou vídeo (https://...)"
+                    placeholder="Cole um link de imagem, vídeo, áudio, PDF ou página (https://...)"
                     className="min-w-0 flex-1 rounded border border-hud/30 bg-input/60 px-3 py-2 font-mono text-xs text-foreground focus:border-hud focus:outline-none"
                   />
                 </div>
@@ -1064,7 +1064,7 @@ ngrok http 7842`}
             type="button"
             onClick={() => setAttachOpen((o) => !o)}
             aria-label="Anexar arquivo ou link"
-            title="Anexar imagem, vídeo, PDF ou link"
+            title="Anexar imagem, vídeo, áudio, PDF, texto ou link"
             className={cn(
               "flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
               attachOpen || attachments.length
@@ -1240,6 +1240,8 @@ function MessageBubble({ message, ghost = false }: { message: Msg; ghost?: boole
                   <img src={a.url} alt={a.name} className="h-12 w-12 rounded object-cover" />
                 ) : a.kind === "video" ? (
                   <FileVideo size={14} className="text-hud" />
+                ) : a.kind === "audio" ? (
+                  <Music size={14} className="text-hud" />
                 ) : (
                   <FileText size={14} className="text-hud" />
                 )}
