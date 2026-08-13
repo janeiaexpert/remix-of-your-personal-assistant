@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "sdk_version": "0.26.2",
+  "path": "/mcp",
+  "auth": {
+    "type": "none"
+  },
+  "mcp": {
+    "server": {
+      "name": "remix-of-your-personal-assistant",
+      "version": "0.1.0",
+      "title": "Remix of Your Personal Assistant"
+    },
+    "tools": [
+      {
+        "name": "get_datetime",
+        "title": "Data e hora atuais",
+        "description": "Retorna a data e hora atuais em UTC e no fuso America/Sao_Paulo. Use sempre que precisar de 'hoje' ou 'agora'.",
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "$schema": "http://json-schema.org/draft-07/schema#",
+          "type": "object",
+          "properties": {}
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "web_search",
+        "title": "Busca web",
+        "description": "Busca web em tempo real via DuckDuckGo (sem chave de API). Use para notícias, cotações, clima, esportes e eventos recentes.",
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Consulta de busca otimizada."
+            },
+            "max_results": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "Máximo de resultados (default 5)."
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "fetch_url",
+        "title": "Ler URL",
+        "description": "Baixa o conteúdo textual de uma URL http/https. HTML é convertido para texto puro. Máximo ~15 KB.",
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": true
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "format": "uri",
+              "description": "URL http(s) a ser lida."
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "run_js",
+        "title": "Executar JavaScript",
+        "description": "Executa uma expressão ou bloco JavaScript no servidor para cálculos, regex e parsing. Sem rede e sem acesso a arquivos. Timeout de 2s.",
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "code": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Expressão ou bloco com `return`."
+            }
+          },
+          "required": [
+            "code"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
