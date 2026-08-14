@@ -19,6 +19,7 @@ import { useWake, type WakeMode } from "@/lib/wake";
 
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
+import { ImageStudio } from "@/components/ImageStudio";
 
 type Msg = { role: "user" | "assistant"; content: string; attachments?: Attachment[] };
 const STORAGE_KEY = "jarvis:conversation:v1";
