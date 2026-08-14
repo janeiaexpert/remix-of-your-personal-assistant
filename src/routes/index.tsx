@@ -444,23 +444,27 @@ function Jarvis() {
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
     setScreenOn(false);
+    setVisionSource(null);
   }, []);
 
   const toggleScreen = useCallback(async () => {
     if (screenOn) { stopScreen(); setScreenError(null); return; }
     setScreenError(null);
     try {
-      const { stream, note } = await startVisionStream(cameraFacing);
+      const { stream, source, note } = await startVisionStream(cameraFacing);
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         screenStreamRef.current = null;
         setScreenOn(false);
+        setVisionSource(null);
       });
       screenStreamRef.current = stream;
+      setVisionSource(source);
       setScreenOn(true);
       if (note) setScreenError(note);
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : "Não foi possível ativar a visão.");
       setScreenOn(false);
+      setVisionSource(null);
     }
   }, [screenOn, stopScreen, cameraFacing]);
 
