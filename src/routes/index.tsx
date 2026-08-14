@@ -1122,11 +1122,14 @@ ngrok http 7842`}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onFocus={() => setComposeOpen(true)}
+            onClick={() => setComposeOpen(true)}
             placeholder="Fale comigo, senhor..."
             rows={1}
             disabled={loading}
             className="h-12 min-w-0 flex-1 resize-none rounded-md border border-hud/30 bg-input/60 px-4 py-3 font-mono text-sm leading-6 text-foreground placeholder:text-muted-foreground/60 focus:border-hud focus:outline-none focus:ring-1 focus:ring-hud"
           />
+
           <button
             type="submit"
             disabled={loading || (!input.trim() && attachments.length === 0)}
