@@ -1143,6 +1143,8 @@ ngrok http 7842`}
             Reconhecimento de voz não suportado neste navegador — use Chrome ou Edge para o modo voz.
           </p>
         )}
+
+        {studioOpen && <ImageStudio onClose={() => setStudioOpen(false)} />}
       </div>
     </div>
   );
