@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
-  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture,
+  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
@@ -19,6 +19,7 @@ import { useWake, type WakeMode } from "@/lib/wake";
 
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
+import { ImageStudio } from "@/components/ImageStudio";
 
 type Msg = { role: "user" | "assistant"; content: string; attachments?: Attachment[] };
 const STORAGE_KEY = "jarvis:conversation:v1";
@@ -120,6 +121,7 @@ function Jarvis() {
   const [screenError, setScreenError] = useState<string | null>(null);
   const [wakeMode, setWakeMode] = useState<WakeMode>("off");
   const [wakeOpen, setWakeOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
   const memoriesRef = useRef<string[]>([]);
@@ -1070,6 +1072,17 @@ ngrok http 7842`}
 
           <button
             type="button"
+            onClick={() => setStudioOpen(true)}
+            aria-label="Gerar imagem PNG 4:5"
+            title="Gerar imagem PNG 4:5"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+          >
+            <ImagePlus size={18} />
+          </button>
+
+
+          <button
+            type="button"
             onClick={() => setAttachOpen((o) => !o)}
             aria-label="Anexar arquivo ou link"
             title="Anexar imagem, vídeo, áudio, PDF, texto ou link"
@@ -1130,6 +1143,8 @@ ngrok http 7842`}
             Reconhecimento de voz não suportado neste navegador — use Chrome ou Edge para o modo voz.
           </p>
         )}
+
+        {studioOpen && <ImageStudio onClose={() => setStudioOpen(false)} />}
       </div>
     </div>
   );
