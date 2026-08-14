@@ -1145,9 +1145,34 @@ ngrok http 7842`}
         {(attachments.length > 0 || attachOpen || screenOn || screenError) && (
           <div className="mt-4 rounded-md border border-hud/25 bg-card/50 p-3 backdrop-blur-sm">
             {screenOn && (
-              <p className="mb-2 flex items-center gap-2 font-mono text-[10px] text-hud">
-                <Camera size={12} /> Visão de tela ativa — um print atual acompanha cada mensagem.
-              </p>
+              <div className="mb-2">
+                <p className="mb-2 flex items-center justify-between gap-2 font-mono text-[10px] text-hud">
+                  <span className="flex items-center gap-2">
+                    <Camera size={12} /> Visão {visionSource === "camera" ? "por câmera" : "de tela"} ativa — um
+                    print atual acompanha cada mensagem.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setVisionOpen(true)}
+                    className="shrink-0 text-hud/60 hover:text-hud"
+                    title="Ajustes da visão"
+                  >
+                    <Settings2 size={12} />
+                  </button>
+                </p>
+                {visionPrefs.showPreview && (
+                  <video
+                    ref={previewRef}
+                    muted
+                    playsInline
+                    autoPlay
+                    className={cn(
+                      "max-h-40 w-full rounded border border-hud/25 bg-black/60 object-contain",
+                      mirrored && "scale-x-[-1]",
+                    )}
+                  />
+                )}
+              </div>
             )}
             {attachOpen && (
               <div className="mb-2 flex flex-col gap-2 sm:flex-row">
