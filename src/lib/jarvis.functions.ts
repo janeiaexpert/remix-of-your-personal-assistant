@@ -256,7 +256,7 @@ export const askJarvis = createServerFn({ method: "POST" })
         model: gateway("google/gemini-3-flash-preview"),
         system: buildSystem(data.memories, data.hasBridge),
         messages: data.messages as ModelMessage[],
-        maxTokens: 400,
+        maxOutputTokens: 400,
         tools: data.hasBridge
           ? { web_search, get_datetime, fetch_url, run_js, shell_exec, fs_read, fs_write, fs_list, open_app }
           : { web_search, get_datetime, fetch_url, run_js },
