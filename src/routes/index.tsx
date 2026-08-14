@@ -122,6 +122,8 @@ function Jarvis() {
   const [wakeMode, setWakeMode] = useState<WakeMode>("off");
   const [wakeOpen, setWakeOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
+
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
   const memoriesRef = useRef<string[]>([]);
