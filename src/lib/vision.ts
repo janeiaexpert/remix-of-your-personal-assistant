@@ -113,46 +113,124 @@ export function fileToText(file: File): Promise<string> {
 
 // --- Screen share -----------------------------------------------------------
 
+type MD = MediaDevices & {
+  getDisplayMedia?: (c: MediaStreamConstraints) => Promise<MediaStream>;
+};
+
+export function inIframe(): boolean {
+  try {
+    return typeof window !== "undefined" && window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
+export function canScreenShare(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return typeof (navigator.mediaDevices as MD | undefined)?.getDisplayMedia === "function";
+}
+
 export async function startScreenShare(): Promise<MediaStream> {
-  const md = navigator.mediaDevices as MediaDevices & {
-    getDisplayMedia?: (c: MediaStreamConstraints) => Promise<MediaStream>;
+  const md = navigator.mediaDevices as MD | undefined;
+  if (!md?.getDisplayMedia) {
+    throw new Error(
+      "Este navegador/dispositivo não suporta captura de tela (iOS e Android não permitem).",
+    );
+  }
+  try {
+    return await md.getDisplayMedia({ video: true, audio: false });
+  } catch (e) {
+    const name = (e as { name?: string })?.name ?? "";
+    if (name === "NotAllowedError" && inIframe()) {
+      throw new Error(
+        "A captura de tela está bloqueada dentro da pré-visualização. Abra o app em uma aba própria e tente novamente.",
+      );
+    }
+    if (name === "NotAllowedError") throw new Error("Permissão de captura de tela negada/cancelada.");
+    throw new Error(e instanceof Error ? e.message : "Falha ao iniciar captura de tela.");
+  }
+}
+
+/** Visão contínua: tenta a tela; se indisponível (celular/iframe), usa a câmera. */
+export async function startVisionStream(
+  preferCameraFacing: "user" | "environment" = "environment",
+): Promise<{ stream: MediaStream; source: "screen" | "camera"; note?: string }> {
+  if (canScreenShare()) {
+    try {
+      return { stream: await startScreenShare(), source: "screen" };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      if (/negada|cancelada/i.test(msg)) throw e;
+      try {
+        return {
+          stream: await startCamera(preferCameraFacing),
+          source: "camera",
+          note: "Tela indisponível aqui — usando a câmera como visão.",
+        };
+      } catch {
+        throw e;
+      }
+    }
+  }
+  return {
+    stream: await startCamera(preferCameraFacing),
+    source: "camera",
+    note: "Captura de tela não é suportada neste dispositivo — usando a câmera como visão.",
   };
-  if (!md?.getDisplayMedia) throw new Error("Este navegador não suporta captura de tela.");
-  return md.getDisplayMedia({ video: true, audio: false });
 }
 
 // --- Câmera -----------------------------------------------------------------
 
 export async function startCamera(facing: "user" | "environment" = "user"): Promise<MediaStream> {
   if (!navigator.mediaDevices?.getUserMedia) throw new Error("Câmera indisponível neste navegador.");
-  return navigator.mediaDevices.getUserMedia({
-    video: { facingMode: facing, width: { ideal: 1280 } },
-    audio: false,
-  });
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: facing, width: { ideal: 1280 } },
+      audio: false,
+    });
+  } catch (e) {
+    const name = (e as { name?: string })?.name ?? "";
+    if (name === "NotAllowedError") throw new Error("Permissão de câmera negada.");
+    if (name === "NotFoundError") throw new Error("Nenhuma câmera encontrada.");
+    throw new Error(e instanceof Error ? e.message : "Falha ao abrir a câmera.");
+  }
 }
 
 export async function captureFrame(stream: MediaStream, maxWidth = 1280): Promise<string> {
   const video = document.createElement("video");
   video.muted = true;
+  video.playsInline = true;
+  video.setAttribute("playsinline", "true");
+  video.style.cssText = "position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0";
+  document.body.appendChild(video);
   video.srcObject = stream;
-  await video.play();
-  // aguarda dimensões reais
-  for (let i = 0; i < 30 && !video.videoWidth; i++) {
-    await new Promise((r) => setTimeout(r, 50));
+  try {
+    try {
+      await video.play();
+    } catch {
+      /* alguns navegadores resolvem sem play() explícito */
+    }
+    for (let i = 0; i < 60 && !video.videoWidth; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!video.videoWidth) throw new Error("Não foi possível ler o quadro do vídeo.");
+    const w = video.videoWidth;
+    const h = video.videoHeight || 720;
+    const scale = Math.min(1, maxWidth / w);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(h * scale);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponível");
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL("image/jpeg", 0.7);
+  } finally {
+    video.pause();
+    video.srcObject = null;
+    video.remove();
   }
-  const w = video.videoWidth || 1280;
-  const h = video.videoHeight || 720;
-  const scale = Math.min(1, maxWidth / w);
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.round(w * scale);
-  canvas.height = Math.round(h * scale);
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas indisponível");
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  video.pause();
-  video.srcObject = null;
-  return canvas.toDataURL("image/jpeg", 0.7);
 }
+
 
 // --- Vídeo: extração de quadros --------------------------------------------
 
