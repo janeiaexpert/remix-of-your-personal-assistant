@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
   Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
+  FlipHorizontal,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
@@ -25,11 +26,26 @@ type Msg = { role: "user" | "assistant"; content: string; attachments?: Attachme
 const STORAGE_KEY = "jarvis:conversation:v1";
 const MEMORY_KEY = "jarvis:memories:v1";
 const WAKE_KEY = "jarvis:wake:v1";
+const CAMERA_KEY = "jarvis:camera:v1";
 const MAX_MEMORIES = 60;
 const GREETING: Msg = {
   role: "assistant",
   content: "Sistemas online. Ao seu dispor, senhor. Em que posso ajudá-lo?",
 };
+
+function loadCameraFacing(): "user" | "environment" {
+  if (typeof window === "undefined") return "user";
+  try {
+    const raw = window.localStorage.getItem(CAMERA_KEY);
+    if (raw === "user" || raw === "environment") return raw;
+  } catch { /* ignore */ }
+  return isMobileDevice() ? "environment" : "user";
+}
+
+function saveCameraFacing(facing: "user" | "environment") {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(CAMERA_KEY, facing); } catch { /* quota */ }
+}
 
 
 function loadMemories(): string[] {
