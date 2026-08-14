@@ -264,6 +264,23 @@ function Jarvis() {
   }, [cameraFacing, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
+    try { window.localStorage.setItem(VISION_KEY, JSON.stringify(visionPrefs)); } catch { /* quota */ }
+  }, [visionPrefs, hydrated]);
+
+  // Espelha o stream ativo no preview local
+  useEffect(() => {
+    const v = previewRef.current;
+    if (!v) return;
+    if (screenOn && visionPrefs.showPreview && screenStreamRef.current) {
+      v.srcObject = screenStreamRef.current;
+      void v.play().catch(() => { /* autoplay */ });
+    } else {
+      v.srcObject = null;
+    }
+  }, [screenOn, visionPrefs.showPreview, visionSource]);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
