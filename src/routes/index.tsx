@@ -742,11 +742,11 @@ function Jarvis() {
               {screenOn ? <Monitor size={16} /> : <MonitorOff size={16} />}
             </IconButton>
             <IconButton
-              title={cameraFacing === "environment" ? "Usar câmera frontal" : "Usar câmera traseira"}
-              onClick={() => setCameraFacing((f) => f === "environment" ? "user" : "environment")}
-              active={cameraFacing === "environment"}
+              title="Ajustes da visão"
+              onClick={() => setVisionOpen((o) => !o)}
+              active={visionOpen}
             >
-              <FlipHorizontal size={16} />
+              <Settings2 size={16} />
             </IconButton>
             <IconButton
               title={voiceOn ? "Desligar voz" : "Ligar voz"}
