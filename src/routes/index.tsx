@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
   Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
+  FlipHorizontal,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
@@ -25,11 +26,26 @@ type Msg = { role: "user" | "assistant"; content: string; attachments?: Attachme
 const STORAGE_KEY = "jarvis:conversation:v1";
 const MEMORY_KEY = "jarvis:memories:v1";
 const WAKE_KEY = "jarvis:wake:v1";
+const CAMERA_KEY = "jarvis:camera:v1";
 const MAX_MEMORIES = 60;
 const GREETING: Msg = {
   role: "assistant",
   content: "Sistemas online. Ao seu dispor, senhor. Em que posso ajudá-lo?",
 };
+
+function loadCameraFacing(): "user" | "environment" {
+  if (typeof window === "undefined") return "user";
+  try {
+    const raw = window.localStorage.getItem(CAMERA_KEY);
+    if (raw === "user" || raw === "environment") return raw;
+  } catch { /* ignore */ }
+  return isMobileDevice() ? "environment" : "user";
+}
+
+function saveCameraFacing(facing: "user" | "environment") {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(CAMERA_KEY, facing); } catch { /* quota */ }
+}
 
 
 function loadMemories(): string[] {
@@ -123,6 +139,7 @@ function Jarvis() {
   const [wakeOpen, setWakeOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
 
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
@@ -140,6 +157,7 @@ function Jarvis() {
     setIsMobile(isMobileDevice());
     setMessages(loadMessages());
     setMemories(loadMemories());
+    setCameraFacing(loadCameraFacing());
     try {
       const w = window.localStorage.getItem(WAKE_KEY);
       if (w === "word" || w === "clap" || w === "both") setWakeMode(w);
@@ -211,6 +229,11 @@ function Jarvis() {
     if (!hydrated) return;
     try { window.localStorage.setItem(WAKE_KEY, wakeMode); } catch { /* quota */ }
   }, [wakeMode, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    saveCameraFacing(cameraFacing);
+  }, [cameraFacing, hydrated]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -357,7 +380,7 @@ function Jarvis() {
     setScreenError(null);
     let stream: MediaStream | null = null;
     try {
-      stream = await startCamera(isMobile ? "environment" : "user");
+      stream = await startCamera(cameraFacing);
       const url = await captureFrame(stream, 1280);
       setAttachments((a) => [
         ...a,
@@ -368,7 +391,7 @@ function Jarvis() {
     } finally {
       stream?.getTracks().forEach((t) => t.stop());
     }
-  }, [isMobile]);
+  }, [cameraFacing]);
 
 
   // --- Visão da tela -------------------------------------------------------
@@ -382,7 +405,7 @@ function Jarvis() {
     if (screenOn) { stopScreen(); setScreenError(null); return; }
     setScreenError(null);
     try {
-      const { stream, note } = await startVisionStream(isMobile ? "environment" : "user");
+      const { stream, note } = await startVisionStream(cameraFacing);
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         screenStreamRef.current = null;
         setScreenOn(false);
@@ -394,7 +417,7 @@ function Jarvis() {
       setScreenError(e instanceof Error ? e.message : "Não foi possível ativar a visão.");
       setScreenOn(false);
     }
-  }, [screenOn, stopScreen, isMobile]);
+  }, [screenOn, stopScreen, cameraFacing]);
 
 
   const grabScreenshot = useCallback(async (): Promise<Attachment | null> => {
@@ -668,6 +691,13 @@ function Jarvis() {
               active={screenOn}
             >
               {screenOn ? <Monitor size={16} /> : <MonitorOff size={16} />}
+            </IconButton>
+            <IconButton
+              title={cameraFacing === "environment" ? "Usar câmera frontal" : "Usar câmera traseira"}
+              onClick={() => setCameraFacing((f) => f === "environment" ? "user" : "environment")}
+              active={cameraFacing === "environment"}
+            >
+              <FlipHorizontal size={16} />
             </IconButton>
             <IconButton
               title={voiceOn ? "Desligar voz" : "Ligar voz"}
