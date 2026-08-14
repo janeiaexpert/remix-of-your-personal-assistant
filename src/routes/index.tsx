@@ -380,7 +380,7 @@ function Jarvis() {
     setScreenError(null);
     let stream: MediaStream | null = null;
     try {
-      stream = await startCamera(isMobile ? "environment" : "user");
+      stream = await startCamera(cameraFacing);
       const url = await captureFrame(stream, 1280);
       setAttachments((a) => [
         ...a,
@@ -391,7 +391,7 @@ function Jarvis() {
     } finally {
       stream?.getTracks().forEach((t) => t.stop());
     }
-  }, [isMobile]);
+  }, [cameraFacing]);
 
 
   // --- Visão da tela -------------------------------------------------------
@@ -405,7 +405,7 @@ function Jarvis() {
     if (screenOn) { stopScreen(); setScreenError(null); return; }
     setScreenError(null);
     try {
-      const { stream, note } = await startVisionStream(isMobile ? "environment" : "user");
+      const { stream, note } = await startVisionStream(cameraFacing);
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         screenStreamRef.current = null;
         setScreenOn(false);
@@ -417,7 +417,7 @@ function Jarvis() {
       setScreenError(e instanceof Error ? e.message : "Não foi possível ativar a visão.");
       setScreenOn(false);
     }
-  }, [screenOn, stopScreen, isMobile]);
+  }, [screenOn, stopScreen, cameraFacing]);
 
 
   const grabScreenshot = useCallback(async (): Promise<Attachment | null> => {
