@@ -164,6 +164,23 @@ function Jarvis() {
   const [visionPrefs, setVisionPrefs] = useState<VisionPrefs>(VISION_DEFAULTS);
   const [visionSource, setVisionSource] = useState<"screen" | "camera" | null>(null);
   const [coverOpen, setCoverOpen] = useState(false);
+  const [system, setSystem] = useState<"blue" | "red">("blue");
+
+  // Sistema de cor (azul / vermelho) — persistido e aplicado ao documento
+  useEffect(() => {
+    try {
+      const s = window.localStorage.getItem("jarvis:system:v1");
+      if (s === "red" || s === "blue") setSystem(s);
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.classList.toggle("theme-red", system === "red");
+    document.body.classList.toggle("theme-red", system === "red");
+    try { window.localStorage.setItem("jarvis:system:v1", system); } catch { /* quota */ }
+  }, [system]);
+
 
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
