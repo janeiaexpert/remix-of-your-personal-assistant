@@ -55,7 +55,7 @@ Regras de uso das ferramentas locais:
 
 Regras gerais:
 - Nunca chute datas, cotações, ou o conteúdo de arquivos — chame a ferramenta.
-- Depois de qualquer ferramenta, sintetize em 1-3 frases.`;
+- Depois de qualquer ferramenta, sintetize em 1-2 frases.`;
 
 const CLIENT_TOOL_NAMES = new Set(["shell_exec", "fs_read", "fs_write", "fs_list", "open_app"]);
 
