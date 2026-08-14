@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
   Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
-  FlipHorizontal,
+  FlipHorizontal, Settings2, Eye, EyeOff,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
@@ -45,6 +45,25 @@ function loadCameraFacing(): "user" | "environment" {
 function saveCameraFacing(facing: "user" | "environment") {
   if (typeof window === "undefined") return;
   try { window.localStorage.setItem(CAMERA_KEY, facing); } catch { /* quota */ }
+}
+
+const VISION_KEY = "jarvis:vision:v1";
+type VisionPrefs = { showPreview: boolean; mirror: "auto" | "on" | "off" };
+const VISION_DEFAULTS: VisionPrefs = { showPreview: true, mirror: "auto" };
+
+function loadVisionPrefs(): VisionPrefs {
+  if (typeof window === "undefined") return VISION_DEFAULTS;
+  try {
+    const raw = window.localStorage.getItem(VISION_KEY);
+    if (!raw) return VISION_DEFAULTS;
+    const p = JSON.parse(raw) as Partial<VisionPrefs>;
+    return {
+      showPreview: typeof p.showPreview === "boolean" ? p.showPreview : true,
+      mirror: p.mirror === "on" || p.mirror === "off" ? p.mirror : "auto",
+    };
+  } catch {
+    return VISION_DEFAULTS;
+  }
 }
 
 
