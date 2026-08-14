@@ -828,6 +828,91 @@ function Jarvis() {
           </div>
         )}
 
+        {visionOpen && (
+          <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
+                Ajustes da visão
+              </h2>
+              <button type="button" onClick={() => setVisionOpen(false)} className="text-hud/60 hover:text-hud">
+                <X size={14} />
+              </button>
+            </div>
+
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Câmera padrão
+            </p>
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              {([
+                { v: "user", label: "Frontal" },
+                { v: "environment", label: "Traseira" },
+              ] as { v: "user" | "environment"; label: string }[]).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setCameraFacing(o.v)}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded border px-2 py-2 font-mono text-[10px] transition",
+                    cameraFacing === o.v
+                      ? "border-hud bg-hud/15 text-hud shadow-hud"
+                      : "border-hud/25 text-muted-foreground hover:text-hud",
+                  )}
+                >
+                  <FlipHorizontal size={12} /> {o.label}
+                </button>
+              ))}
+            </div>
+
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Exibição
+            </p>
+            <button
+              type="button"
+              onClick={() => setVisionPrefs((p) => ({ ...p, showPreview: !p.showPreview }))}
+              className={cn(
+                "mb-3 flex w-full items-center justify-between rounded border px-3 py-2 font-mono text-[10px] transition",
+                visionPrefs.showPreview
+                  ? "border-hud bg-hud/10 text-hud"
+                  : "border-hud/25 text-muted-foreground hover:text-hud",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                {visionPrefs.showPreview ? <Eye size={12} /> : <EyeOff size={12} />} Mostrar preview da visão
+              </span>
+              <span>{visionPrefs.showPreview ? "ligado" : "desligado"}</span>
+            </button>
+
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Espelhamento do preview
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { v: "auto", label: "Automático" },
+                { v: "on", label: "Espelhado" },
+                { v: "off", label: "Normal" },
+              ] as { v: VisionPrefs["mirror"]; label: string }[]).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setVisionPrefs((p) => ({ ...p, mirror: o.v }))}
+                  className={cn(
+                    "rounded border px-2 py-2 font-mono text-[10px] transition",
+                    visionPrefs.mirror === o.v
+                      ? "border-hud bg-hud/15 text-hud shadow-hud"
+                      : "border-hud/25 text-muted-foreground hover:text-hud",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              No modo automático apenas a câmera frontal é espelhada. O espelhamento é só visual — o quadro
+              enviado a mim mantém a orientação original, senhor. Fonte atual:{" "}
+              <span className="text-hud">{visionSource ?? "inativa"}</span>.
+            </p>
+          </div>
+        )}
 
 
         {bridgeOpen && (
