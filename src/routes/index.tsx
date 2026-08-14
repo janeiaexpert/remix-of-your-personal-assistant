@@ -139,6 +139,7 @@ function Jarvis() {
   const [wakeOpen, setWakeOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
 
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
