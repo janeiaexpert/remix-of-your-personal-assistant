@@ -1546,7 +1546,7 @@ function MessageBubble({ message, ghost = false }: { message: Msg; ghost?: boole
           "max-w-[85%] rounded-lg border px-4 py-2.5 font-mono text-sm leading-relaxed",
           isUser
             ? "border-gold/40 bg-gold/10 text-foreground"
-            : "border-hud/40 bg-hud/5 text-foreground shadow-[0_0_20px_oklch(0.78_0.16_220/0.15)]",
+            : "border-hud/40 bg-hud/5 text-foreground shadow-hud",
           ghost && "opacity-60 italic",
         )}
       >
