@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
   Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
-  FlipHorizontal, Settings2, Eye, EyeOff,
+  FlipHorizontal, Settings2, Eye, EyeOff, Sparkles,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
@@ -21,6 +21,7 @@ import { useWake, type WakeMode } from "@/lib/wake";
 import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 import { ImageStudio } from "@/components/ImageStudio";
+import { CoverScreen } from "@/components/CoverScreen";
 
 type Msg = { role: "user" | "assistant"; content: string; attachments?: Attachment[] };
 const STORAGE_KEY = "jarvis:conversation:v1";
@@ -162,6 +163,7 @@ function Jarvis() {
   const [visionOpen, setVisionOpen] = useState(false);
   const [visionPrefs, setVisionPrefs] = useState<VisionPrefs>(VISION_DEFAULTS);
   const [visionSource, setVisionSource] = useState<"screen" | "camera" | null>(null);
+  const [coverOpen, setCoverOpen] = useState(false);
 
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
@@ -701,6 +703,7 @@ function Jarvis() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
+      {coverOpen && <CoverScreen onExit={() => setCoverOpen(false)} />}
       {/* HUD background */}
       <div className="pointer-events-none absolute inset-0 hud-grid opacity-40" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-hud to-transparent opacity-70" />
@@ -727,6 +730,10 @@ function Jarvis() {
             <div className={cn("hidden font-mono text-xs tracking-widest sm:block", status.color)}>
               ● {status.label}
             </div>
+            <IconButton title="Abrir capa holográfica" onClick={() => setCoverOpen(true)}>
+              <Sparkles size={16} />
+            </IconButton>
+
             <IconButton
               title={wakeMode === "off" ? "Ativação por voz/palmas (desligada)" : `Ativação: ${wakeMode}`}
               onClick={() => setWakeOpen((o) => !o)}
