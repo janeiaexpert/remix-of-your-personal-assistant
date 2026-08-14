@@ -12,7 +12,7 @@ import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { loadBridge, saveBridge, loadBridgeDraft, saveBridgeDraft, health, runTool, pairingUrl, readPairingFromHash, type BridgeConfig } from "@/lib/bridge";
 import {
   type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl, fileToText,
-  startScreenShare, captureFrame, startCamera, extractVideoFrames,
+  startScreenShare, captureFrame, startCamera, extractVideoFrames, startVisionStream,
   validateFile, formatBytes, ACCEPT_ATTR,
 } from "@/lib/vision";
 import { useWake, type WakeMode } from "@/lib/wake";
