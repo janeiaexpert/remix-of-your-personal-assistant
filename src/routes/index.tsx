@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
-  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture,
+  Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
