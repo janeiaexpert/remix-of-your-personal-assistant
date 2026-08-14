@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
   Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
-  FlipHorizontal,
+  FlipHorizontal, Settings2, Eye, EyeOff,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
@@ -45,6 +45,25 @@ function loadCameraFacing(): "user" | "environment" {
 function saveCameraFacing(facing: "user" | "environment") {
   if (typeof window === "undefined") return;
   try { window.localStorage.setItem(CAMERA_KEY, facing); } catch { /* quota */ }
+}
+
+const VISION_KEY = "jarvis:vision:v1";
+type VisionPrefs = { showPreview: boolean; mirror: "auto" | "on" | "off" };
+const VISION_DEFAULTS: VisionPrefs = { showPreview: true, mirror: "auto" };
+
+function loadVisionPrefs(): VisionPrefs {
+  if (typeof window === "undefined") return VISION_DEFAULTS;
+  try {
+    const raw = window.localStorage.getItem(VISION_KEY);
+    if (!raw) return VISION_DEFAULTS;
+    const p = JSON.parse(raw) as Partial<VisionPrefs>;
+    return {
+      showPreview: typeof p.showPreview === "boolean" ? p.showPreview : true,
+      mirror: p.mirror === "on" || p.mirror === "off" ? p.mirror : "auto",
+    };
+  } catch {
+    return VISION_DEFAULTS;
+  }
 }
 
 
@@ -140,6 +159,9 @@ function Jarvis() {
   const [studioOpen, setStudioOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
+  const [visionOpen, setVisionOpen] = useState(false);
+  const [visionPrefs, setVisionPrefs] = useState<VisionPrefs>(VISION_DEFAULTS);
+  const [visionSource, setVisionSource] = useState<"screen" | "camera" | null>(null);
 
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
@@ -148,6 +170,11 @@ function Jarvis() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const previewRef = useRef<HTMLVideoElement>(null);
+
+  const mirrored =
+    visionPrefs.mirror === "on" ||
+    (visionPrefs.mirror === "auto" && visionSource === "camera" && cameraFacing === "user");
 
   useEffect(() => { memoriesRef.current = memories; }, [memories]);
 
@@ -158,6 +185,7 @@ function Jarvis() {
     setMessages(loadMessages());
     setMemories(loadMemories());
     setCameraFacing(loadCameraFacing());
+    setVisionPrefs(loadVisionPrefs());
     try {
       const w = window.localStorage.getItem(WAKE_KEY);
       if (w === "word" || w === "clap" || w === "both") setWakeMode(w);
@@ -234,6 +262,23 @@ function Jarvis() {
     if (!hydrated) return;
     saveCameraFacing(cameraFacing);
   }, [cameraFacing, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try { window.localStorage.setItem(VISION_KEY, JSON.stringify(visionPrefs)); } catch { /* quota */ }
+  }, [visionPrefs, hydrated]);
+
+  // Espelha o stream ativo no preview local
+  useEffect(() => {
+    const v = previewRef.current;
+    if (!v) return;
+    if (screenOn && visionPrefs.showPreview && screenStreamRef.current) {
+      v.srcObject = screenStreamRef.current;
+      void v.play().catch(() => { /* autoplay */ });
+    } else {
+      v.srcObject = null;
+    }
+  }, [screenOn, visionPrefs.showPreview, visionSource]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -399,23 +444,27 @@ function Jarvis() {
     screenStreamRef.current?.getTracks().forEach((t) => t.stop());
     screenStreamRef.current = null;
     setScreenOn(false);
+    setVisionSource(null);
   }, []);
 
   const toggleScreen = useCallback(async () => {
     if (screenOn) { stopScreen(); setScreenError(null); return; }
     setScreenError(null);
     try {
-      const { stream, note } = await startVisionStream(cameraFacing);
+      const { stream, source, note } = await startVisionStream(cameraFacing);
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         screenStreamRef.current = null;
         setScreenOn(false);
+        setVisionSource(null);
       });
       screenStreamRef.current = stream;
+      setVisionSource(source);
       setScreenOn(true);
       if (note) setScreenError(note);
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : "Não foi possível ativar a visão.");
       setScreenOn(false);
+      setVisionSource(null);
     }
   }, [screenOn, stopScreen, cameraFacing]);
 
@@ -693,11 +742,11 @@ function Jarvis() {
               {screenOn ? <Monitor size={16} /> : <MonitorOff size={16} />}
             </IconButton>
             <IconButton
-              title={cameraFacing === "environment" ? "Usar câmera frontal" : "Usar câmera traseira"}
-              onClick={() => setCameraFacing((f) => f === "environment" ? "user" : "environment")}
-              active={cameraFacing === "environment"}
+              title="Ajustes da visão"
+              onClick={() => setVisionOpen((o) => !o)}
+              active={visionOpen}
             >
-              <FlipHorizontal size={16} />
+              <Settings2 size={16} />
             </IconButton>
             <IconButton
               title={voiceOn ? "Desligar voz" : "Ligar voz"}
@@ -779,6 +828,91 @@ function Jarvis() {
           </div>
         )}
 
+        {visionOpen && (
+          <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
+                Ajustes da visão
+              </h2>
+              <button type="button" onClick={() => setVisionOpen(false)} className="text-hud/60 hover:text-hud">
+                <X size={14} />
+              </button>
+            </div>
+
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Câmera padrão
+            </p>
+            <div className="mb-4 grid grid-cols-2 gap-2">
+              {([
+                { v: "user", label: "Frontal" },
+                { v: "environment", label: "Traseira" },
+              ] as { v: "user" | "environment"; label: string }[]).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setCameraFacing(o.v)}
+                  className={cn(
+                    "flex items-center justify-center gap-2 rounded border px-2 py-2 font-mono text-[10px] transition",
+                    cameraFacing === o.v
+                      ? "border-hud bg-hud/15 text-hud shadow-hud"
+                      : "border-hud/25 text-muted-foreground hover:text-hud",
+                  )}
+                >
+                  <FlipHorizontal size={12} /> {o.label}
+                </button>
+              ))}
+            </div>
+
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Exibição
+            </p>
+            <button
+              type="button"
+              onClick={() => setVisionPrefs((p) => ({ ...p, showPreview: !p.showPreview }))}
+              className={cn(
+                "mb-3 flex w-full items-center justify-between rounded border px-3 py-2 font-mono text-[10px] transition",
+                visionPrefs.showPreview
+                  ? "border-hud bg-hud/10 text-hud"
+                  : "border-hud/25 text-muted-foreground hover:text-hud",
+              )}
+            >
+              <span className="flex items-center gap-2">
+                {visionPrefs.showPreview ? <Eye size={12} /> : <EyeOff size={12} />} Mostrar preview da visão
+              </span>
+              <span>{visionPrefs.showPreview ? "ligado" : "desligado"}</span>
+            </button>
+
+            <p className="mb-2 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+              Espelhamento do preview
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { v: "auto", label: "Automático" },
+                { v: "on", label: "Espelhado" },
+                { v: "off", label: "Normal" },
+              ] as { v: VisionPrefs["mirror"]; label: string }[]).map((o) => (
+                <button
+                  key={o.v}
+                  type="button"
+                  onClick={() => setVisionPrefs((p) => ({ ...p, mirror: o.v }))}
+                  className={cn(
+                    "rounded border px-2 py-2 font-mono text-[10px] transition",
+                    visionPrefs.mirror === o.v
+                      ? "border-hud bg-hud/15 text-hud shadow-hud"
+                      : "border-hud/25 text-muted-foreground hover:text-hud",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-3 font-mono text-[10px] leading-relaxed text-muted-foreground">
+              No modo automático apenas a câmera frontal é espelhada. O espelhamento é só visual — o quadro
+              enviado a mim mantém a orientação original, senhor. Fonte atual:{" "}
+              <span className="text-hud">{visionSource ?? "inativa"}</span>.
+            </p>
+          </div>
+        )}
 
 
         {bridgeOpen && (
@@ -1011,9 +1145,34 @@ ngrok http 7842`}
         {(attachments.length > 0 || attachOpen || screenOn || screenError) && (
           <div className="mt-4 rounded-md border border-hud/25 bg-card/50 p-3 backdrop-blur-sm">
             {screenOn && (
-              <p className="mb-2 flex items-center gap-2 font-mono text-[10px] text-hud">
-                <Camera size={12} /> Visão de tela ativa — um print atual acompanha cada mensagem.
-              </p>
+              <div className="mb-2">
+                <p className="mb-2 flex items-center justify-between gap-2 font-mono text-[10px] text-hud">
+                  <span className="flex items-center gap-2">
+                    <Camera size={12} /> Visão {visionSource === "camera" ? "por câmera" : "de tela"} ativa — um
+                    print atual acompanha cada mensagem.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setVisionOpen(true)}
+                    className="shrink-0 text-hud/60 hover:text-hud"
+                    title="Ajustes da visão"
+                  >
+                    <Settings2 size={12} />
+                  </button>
+                </p>
+                {visionPrefs.showPreview && (
+                  <video
+                    ref={previewRef}
+                    muted
+                    playsInline
+                    autoPlay
+                    className={cn(
+                      "max-h-40 w-full rounded border border-hud/25 bg-black/60 object-contain",
+                      mirrored && "scale-x-[-1]",
+                    )}
+                  />
+                )}
+              </div>
             )}
             {attachOpen && (
               <div className="mb-2 flex flex-col gap-2 sm:flex-row">
