@@ -97,11 +97,13 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-display);
+    /* Segue o sistema de cor ativo (azul/vermelho) via tokens */
     background-image:
-      radial-gradient(ellipse at top, oklch(0.30 0.08 220 / 0.35), transparent 60%),
-      radial-gradient(ellipse at bottom, oklch(0.25 0.06 260 / 0.25), transparent 60%);
+      radial-gradient(ellipse at top, color-mix(in oklab, var(--hud) 22%, transparent), transparent 60%),
+      radial-gradient(ellipse at bottom, color-mix(in oklab, var(--hud) 14%, transparent), transparent 60%);
     background-attachment: fixed;
   }
+
 }
 
 /* HUD grid overlay */
