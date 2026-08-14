@@ -722,12 +722,32 @@ function Jarvis() {
     <div className="relative min-h-screen overflow-hidden">
       {coverOpen && <CoverScreen onExit={() => setCoverOpen(false)} system={system} />}
       {/* HUD background */}
-      <div className="pointer-events-none absolute inset-0 hud-grid opacity-40" />
+      <div className="pointer-events-none fixed inset-0 -z-10 hud-grid opacity-30" />
+      {/* Holograma 3D em movimento — fundo da interface (celular e notebook) */}
+      <div className="pointer-events-none fixed inset-0 -z-10 holo-stage overflow-hidden">
+        <div
+          className="absolute left-1/2 top-1/2 aspect-square w-[130vmin] -translate-x-1/2 -translate-y-1/2 holo-orbit opacity-[0.28]"
+        >
+          <div className="absolute inset-0 rounded-full border border-hud/50 cover-spin" />
+          <div className="absolute inset-[10%] rounded-full border border-dashed border-gold/40 cover-spin-rev" />
+          <div className="absolute inset-[24%] rounded-full border border-foreground/20 cover-spin" />
+          <div className="absolute inset-[38%] rounded-full border-2 border-hud/40 cover-breathe" />
+        </div>
+        <div
+          className="absolute inset-0 cover-breathe"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 50% 45%, color-mix(in oklab, var(--hud) 16%, transparent), transparent 62%)",
+          }}
+        />
+        <div className="absolute inset-0 cover-scanlines opacity-20" />
+      </div>
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-hud to-transparent opacity-70" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-hud to-transparent opacity-70" />
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-hud/10 to-transparent jarvis-scan" />
       </div>
+
 
       <div className="relative mx-auto flex min-h-screen max-w-5xl flex-col px-4 py-6 sm:px-6 sm:py-8">
         {/* Header */}
@@ -1526,7 +1546,7 @@ function MessageBubble({ message, ghost = false }: { message: Msg; ghost?: boole
           "max-w-[85%] rounded-lg border px-4 py-2.5 font-mono text-sm leading-relaxed",
           isUser
             ? "border-gold/40 bg-gold/10 text-foreground"
-            : "border-hud/40 bg-hud/5 text-foreground shadow-[0_0_20px_oklch(0.78_0.16_220/0.15)]",
+            : "border-hud/40 bg-hud/5 text-foreground shadow-hud",
           ghost && "opacity-60 italic",
         )}
       >
