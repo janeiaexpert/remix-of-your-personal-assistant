@@ -159,6 +159,9 @@ function Jarvis() {
   const [studioOpen, setStudioOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
+  const [visionOpen, setVisionOpen] = useState(false);
+  const [visionPrefs, setVisionPrefs] = useState<VisionPrefs>(VISION_DEFAULTS);
+  const [visionSource, setVisionSource] = useState<"screen" | "camera" | null>(null);
 
 
   const bridgeRef = useRef<BridgeConfig | null>(null);
@@ -167,6 +170,11 @@ function Jarvis() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const previewRef = useRef<HTMLVideoElement>(null);
+
+  const mirrored =
+    visionPrefs.mirror === "on" ||
+    (visionPrefs.mirror === "auto" && visionSource === "camera" && cameraFacing === "user");
 
   useEffect(() => { memoriesRef.current = memories; }, [memories]);
 
