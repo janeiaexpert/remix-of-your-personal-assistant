@@ -231,6 +231,11 @@ function Jarvis() {
   }, [wakeMode, hydrated]);
 
   useEffect(() => {
+    if (!hydrated) return;
+    saveCameraFacing(cameraFacing);
+  }, [cameraFacing, hydrated]);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
