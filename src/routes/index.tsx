@@ -727,6 +727,10 @@ function Jarvis() {
             <div className={cn("hidden font-mono text-xs tracking-widest sm:block", status.color)}>
               ● {status.label}
             </div>
+            <IconButton title="Abrir capa holográfica" onClick={() => setCoverOpen(true)}>
+              <Sparkles size={16} />
+            </IconButton>
+
             <IconButton
               title={wakeMode === "off" ? "Ativação por voz/palmas (desligada)" : `Ativação: ${wakeMode}`}
               onClick={() => setWakeOpen((o) => !o)}
