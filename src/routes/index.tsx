@@ -157,6 +157,7 @@ function Jarvis() {
     setIsMobile(isMobileDevice());
     setMessages(loadMessages());
     setMemories(loadMemories());
+    setCameraFacing(loadCameraFacing());
     try {
       const w = window.localStorage.getItem(WAKE_KEY);
       if (w === "word" || w === "clap" || w === "both") setWakeMode(w);
