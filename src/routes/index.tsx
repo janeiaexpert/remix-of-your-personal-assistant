@@ -216,7 +216,7 @@ function Jarvis() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  
 
   // --- Anexos --------------------------------------------------------------
   const addFiles = useCallback(async (files: FileList | null) => {
