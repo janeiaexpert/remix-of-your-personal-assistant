@@ -12,7 +12,7 @@ import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
 import { loadBridge, saveBridge, loadBridgeDraft, saveBridgeDraft, health, runTool, pairingUrl, readPairingFromHash, type BridgeConfig } from "@/lib/bridge";
 import {
   type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl, fileToText,
-  startScreenShare, captureFrame, startCamera, extractVideoFrames,
+  captureFrame, startCamera, extractVideoFrames, startVisionStream,
   validateFile, formatBytes, ACCEPT_ATTR,
 } from "@/lib/vision";
 import { useWake, type WakeMode } from "@/lib/wake";
@@ -379,21 +379,23 @@ function Jarvis() {
   }, []);
 
   const toggleScreen = useCallback(async () => {
-    if (screenOn) { stopScreen(); return; }
+    if (screenOn) { stopScreen(); setScreenError(null); return; }
     setScreenError(null);
     try {
-      const stream = await startScreenShare();
+      const { stream, note } = await startVisionStream(isMobile ? "environment" : "user");
       stream.getVideoTracks()[0]?.addEventListener("ended", () => {
         screenStreamRef.current = null;
         setScreenOn(false);
       });
       screenStreamRef.current = stream;
       setScreenOn(true);
+      if (note) setScreenError(note);
     } catch (e) {
-      setScreenError(e instanceof Error ? e.message : "Captura de tela cancelada.");
+      setScreenError(e instanceof Error ? e.message : "Não foi possível ativar a visão.");
       setScreenOn(false);
     }
-  }, [screenOn, stopScreen]);
+  }, [screenOn, stopScreen, isMobile]);
+
 
   const grabScreenshot = useCallback(async (): Promise<Attachment | null> => {
     const stream = screenStreamRef.current;
