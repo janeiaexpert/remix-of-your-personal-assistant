@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import {
   Mic, MicOff, Send, Volume2, VolumeX, Trash2, Brain, X, Plus, Plug, PlugZap, QrCode,
   Paperclip, Monitor, MonitorOff, Link2, FileVideo, FileText, Radio, Camera, Music, Aperture, ImagePlus,
-  FlipHorizontal, Settings2, Eye, EyeOff, Sparkles,
+  FlipHorizontal, Settings2, Eye, EyeOff, Sparkles, Palette,
 } from "lucide-react";
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
@@ -720,7 +720,7 @@ function Jarvis() {
 
   return (
     <div className="relative min-h-screen overflow-hidden">
-      {coverOpen && <CoverScreen onExit={() => setCoverOpen(false)} />}
+      {coverOpen && <CoverScreen onExit={() => setCoverOpen(false)} system={system} />}
       {/* HUD background */}
       <div className="pointer-events-none absolute inset-0 hud-grid opacity-40" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-hud to-transparent opacity-70" />
@@ -749,6 +749,13 @@ function Jarvis() {
             </div>
             <IconButton title="Abrir capa holográfica" onClick={() => setCoverOpen(true)}>
               <Sparkles size={16} />
+            </IconButton>
+            <IconButton
+              title={system === "red" ? "Sistema vermelho (trocar p/ azul)" : "Sistema azul (trocar p/ vermelho)"}
+              onClick={() => setSystem((s) => (s === "red" ? "blue" : "red"))}
+              active
+            >
+              <Palette size={16} />
             </IconButton>
 
             <IconButton
