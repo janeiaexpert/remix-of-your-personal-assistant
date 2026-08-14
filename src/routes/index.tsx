@@ -1072,6 +1072,17 @@ ngrok http 7842`}
 
           <button
             type="button"
+            onClick={() => setStudioOpen(true)}
+            aria-label="Gerar imagem PNG 4:5"
+            title="Gerar imagem PNG 4:5"
+            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+          >
+            <ImagePlus size={18} />
+          </button>
+
+
+          <button
+            type="button"
             onClick={() => setAttachOpen((o) => !o)}
             aria-label="Anexar arquivo ou link"
             title="Anexar imagem, vídeo, áudio, PDF, texto ou link"
