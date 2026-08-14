@@ -1150,6 +1150,60 @@ ngrok http 7842`}
         )}
 
         {studioOpen && <ImageStudio onClose={() => setStudioOpen(false)} />}
+
+        {composeOpen && (
+          <div
+            className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm"
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="flex items-center justify-between border-b border-hud/30 px-4 py-3">
+              <span className="font-mono text-[11px] uppercase tracking-widest text-hud">
+                Mensagem
+              </span>
+              <button
+                type="button"
+                onClick={() => setComposeOpen(false)}
+                aria-label="Fechar"
+                className="flex h-9 w-9 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud hover:bg-hud/20"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <textarea
+              autoFocus
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  setComposeOpen(false);
+                  void send(input);
+                }
+                if (e.key === "Escape") setComposeOpen(false);
+              }}
+              placeholder="Fale comigo, senhor..."
+              className="min-h-0 flex-1 resize-none bg-transparent px-4 py-4 font-mono text-base leading-7 text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+            />
+            <div className="flex items-center justify-between gap-3 border-t border-hud/30 px-4 py-3">
+              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
+                {input.trim().length} caracteres
+              </span>
+              <button
+                type="button"
+                disabled={loading || (!input.trim() && attachments.length === 0)}
+                onClick={() => {
+                  setComposeOpen(false);
+                  void send(input);
+                }}
+                className="flex items-center gap-2 rounded-md border border-hud bg-hud/20 px-4 py-2 font-mono text-xs uppercase tracking-widest text-hud transition hover:bg-hud/30 hover:shadow-hud disabled:opacity-40"
+              >
+                <Send size={14} /> Enviar
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
