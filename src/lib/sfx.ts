@@ -46,6 +46,7 @@ export function bladeSwipe(variant: "up" | "down" = "up", volume = 1) {
   if (!enabled) return;
   const c = getCtx();
   if (!c || !master) return;
+  const bus = master;
   if (c.state === "suspended") void c.resume().catch(() => {});
   const t = c.currentTime + 0.01;
   const dur = 0.5;
@@ -71,7 +72,7 @@ export function bladeSwipe(variant: "up" | "down" = "up", volume = 1) {
   g.gain.exponentialRampToValueAtTime(0.28 * volume, t + 0.07);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
 
-  src.connect(bp).connect(hp).connect(g).connect(master);
+  src.connect(bp).connect(hp).connect(g).connect(bus);
   src.start(t);
   src.stop(t + dur + 0.1);
 
@@ -87,7 +88,7 @@ export function bladeSwipe(variant: "up" | "down" = "up", volume = 1) {
     og.gain.setValueAtTime(0.0001, t + 0.03);
     og.gain.exponentialRampToValueAtTime(peak, t + 0.09);
     og.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
-    osc.connect(og).connect(master);
+    osc.connect(og).connect(bus);
     osc.start(t);
     osc.stop(t + 0.6);
   });
@@ -98,6 +99,7 @@ export function hudImpact(volume = 1) {
   if (!enabled) return;
   const c = getCtx();
   if (!c || !master) return;
+  const bus = master;
   const t = c.currentTime + 0.01;
   const osc = c.createOscillator();
   osc.type = "sine";
@@ -107,7 +109,7 @@ export function hudImpact(volume = 1) {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.18 * volume, t + 0.03);
   g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-  osc.connect(g).connect(master);
+  osc.connect(g).connect(bus);
   osc.start(t);
   osc.stop(t + 0.35);
 }
