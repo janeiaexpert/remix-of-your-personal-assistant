@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 
 // -----------------------------------------------------------------------------
 // Ativação por palavra ("JARVIS") e por duas palmas.
-// Roda um reconhecimento contínuo separado do microfone principal + um detector
-// de picos de áudio (palmas) usando AnalyserNode.
+// Ambos os detectores rodam ao mesmo tempo no modo "both": o detector de palmas
+// mantém UM stream de microfone vivo e o reconhecimento de voz é reiniciado com
+// tolerância a erros, sem derrubar o stream. O estado "paused" não desliga o
+// microfone — apenas ignora os gatilhos — o que evita oscilação entre ciclos.
 // -----------------------------------------------------------------------------
 
 type RecCtor = new () => RecInstance;
@@ -13,6 +15,7 @@ interface RecInstance extends EventTarget {
   interimResults: boolean;
   start: () => void;
   stop: () => void;
+  abort?: () => void;
   onresult: ((e: WakeResultEvent) => void) | null;
   onerror: ((e: Event) => void) | null;
   onend: (() => void) | null;
@@ -44,11 +47,18 @@ export function useWake({
   const [armed, setArmed] = useState(false);
   const [claps, setClaps] = useState(0);
   const onWakeRef = useRef(onWake);
+  const pausedRef = useRef(!!paused);
   useEffect(() => { onWakeRef.current = onWake; }, [onWake]);
+  useEffect(() => { pausedRef.current = !!paused; }, [paused]);
 
   const wantWord = mode === "word" || mode === "both";
   const wantClap = mode === "clap" || mode === "both";
-  const active = mode !== "off" && !paused;
+  const active = mode !== "off";
+
+  const fire = () => {
+    if (pausedRef.current) return;
+    onWakeRef.current();
+  };
 
   // --- palavra de ativação -------------------------------------------------
   useEffect(() => {
@@ -61,12 +71,20 @@ export function useWake({
     let stopped = false;
     let rec: RecInstance | null = null;
     let restartTimer: number | undefined;
+    let backoff = 400;
 
-    const spin = () => {
+    const schedule = (ms: number) => {
+      if (stopped) return;
+      if (restartTimer) window.clearTimeout(restartTimer);
+      restartTimer = window.setTimeout(spin, ms);
+    };
+
+    function spin() {
       if (stopped) return;
       try {
-        rec = new Ctor();
+        rec = new Ctor!();
       } catch {
+        schedule(1500);
         return;
       }
       rec.lang = "pt-BR";
@@ -76,8 +94,9 @@ export function useWake({
         for (let i = 0; i < e.results.length; i++) {
           const t = e.results[i][0].transcript;
           if (WAKE_RE.test(t)) {
-            onWakeRef.current();
-            try { rec?.stop(); } catch { /* noop */ }
+            fire();
+            // Reinicia o reconhecedor para limpar o buffer, sem desligar de vez.
+            try { rec?.abort ? rec.abort() : rec?.stop(); } catch { /* noop */ }
             return;
           }
         }
@@ -86,27 +105,41 @@ export function useWake({
         const err = (e as unknown as { error?: string }).error;
         if (err === "not-allowed" || err === "service-not-allowed") {
           setError("Permissão de microfone negada.");
+          setArmed(false);
           stopped = true;
+          return;
         }
+        // aborted / no-speech / audio-capture / network → tenta de novo
+        backoff = Math.min(backoff * 2, 4000);
+        schedule(backoff);
       };
       rec.onend = () => {
         if (stopped) return;
-        restartTimer = window.setTimeout(spin, 600);
+        schedule(backoff);
       };
       try {
         rec.start();
+        backoff = 400;
         setArmed(true);
-      } catch { /* noop */ }
-    };
-    spin();
+        setError(null);
+      } catch {
+        schedule(800);
+      }
+    }
+
+    // No modo "ambos" damos um pequeno atraso para o stream de palmas subir
+    // primeiro — assim os dois consumidores do microfone convivem.
+    const startDelay = wantClap ? 700 : 0;
+    const boot = window.setTimeout(spin, startDelay);
 
     return () => {
       stopped = true;
-      setArmed(false);
+      window.clearTimeout(boot);
       if (restartTimer) window.clearTimeout(restartTimer);
-      try { rec?.stop(); } catch { /* noop */ }
+      try { rec?.abort ? rec.abort() : rec?.stop(); } catch { /* noop */ }
+      if (!wantClap) setArmed(false);
     };
-  }, [active, wantWord]);
+  }, [active, wantWord, wantClap]);
 
   // --- duas palmas ---------------------------------------------------------
   useEffect(() => {
@@ -118,7 +151,9 @@ export function useWake({
 
     void (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+        });
       } catch {
         setError("Permissão de microfone negada para detectar palmas.");
         return;
@@ -132,6 +167,7 @@ export function useWake({
         (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctor) return;
       ctx = new Ctor();
+      if (ctx.state === "suspended") await ctx.resume().catch(() => {});
       const src = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 1024;
@@ -156,7 +192,7 @@ export function useWake({
             firstClap = 0;
             setClaps(0);
             cooldownUntil = now + 1500;
-            onWakeRef.current();
+            fire();
           } else {
             firstClap = now;
             setClaps(1);
