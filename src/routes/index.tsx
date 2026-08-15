@@ -679,6 +679,9 @@ function Jarvis() {
   );
 
 
+  // O som HUD acompanha o botão de voz.
+  useEffect(() => { setSfxEnabled(voiceOn); }, [voiceOn]);
+
   const speech = useSpeech((finalText) => {
     void send(finalText);
   });
