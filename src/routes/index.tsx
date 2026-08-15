@@ -1352,8 +1352,15 @@ ngrok http 7842`}
               type="button"
               onClick={() => {
                 void primeAudio();
-                if (speech.listening) speech.stop();
-                else speech.start();
+                void primeSfx();
+                if (speech.listening) {
+                  speech.stop();
+                  bladeSwipe("down", 0.7);
+                } else {
+                  speech.start();
+                  bladeSwipe("up", 0.9);
+                  hudImpact(0.7);
+                }
               }}
               disabled={loading}
               aria-label={speech.listening ? "Parar" : "Falar"}
