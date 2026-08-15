@@ -10,6 +10,7 @@ import {
 import { askJarvis, extractMemories } from "@/lib/jarvis.functions";
 import { transcribeAudio } from "@/lib/media.functions";
 import { useSpeech, speak, cancelSpeech, primeAudio } from "@/lib/speech";
+import { bladeSwipe, hudImpact, primeSfx, setSfxEnabled } from "@/lib/sfx";
 import { loadBridge, saveBridge, loadBridgeDraft, saveBridgeDraft, health, runTool, pairingUrl, readPairingFromHash, type BridgeConfig } from "@/lib/bridge";
 import {
   type Attachment, newId, kindFromMime, guessMimeFromUrl, fileToDataUrl, fileToText,
@@ -548,6 +549,9 @@ function Jarvis() {
       const clean = text.trim();
       if ((!clean && attachments.length === 0) || loading) return;
       void primeAudio();
+      void primeSfx();
+      bladeSwipe("up");
+      hudImpact(0.8);
       cancelSpeech();
       setSpeaking(false);
       const shot = screenOn ? await grabScreenshot() : null;
@@ -649,6 +653,7 @@ function Jarvis() {
         }
         const reply = finalText || "…";
         setMessages((m) => [...m, { role: "assistant", content: reply }]);
+        bladeSwipe("down", 0.85);
         if (voiceOn) {
           void speak(reply, { onStart: () => setSpeaking(true), onEnd: () => setSpeaking(false) });
         }
@@ -684,6 +689,9 @@ function Jarvis() {
     paused: speech.listening || loading || speaking,
     onWake: () => {
       void primeAudio();
+      void primeSfx();
+      bladeSwipe("up", 0.9);
+      hudImpact();
       if (!speech.listening) speech.start();
     },
   });
