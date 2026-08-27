@@ -88,6 +88,8 @@ import { createParser } from "eventsource-parser";
 
 let audioCtx: AudioContext | null = null;
 let currentAbort: AbortController | null = null;
+let analyser: AnalyserNode | null = null;
+let analyserData: Uint8Array | null = null;
 
 function getCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -98,6 +100,31 @@ function getCtx(): AudioContext | null {
   if (!audioCtx) audioCtx = new Ctor({ sampleRate: 24000 });
   return audioCtx;
 }
+
+function getAnalyser(ctx: AudioContext): AnalyserNode {
+  if (!analyser) {
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.75;
+    analyser.connect(ctx.destination);
+    analyserData = new Uint8Array(analyser.fftSize);
+  }
+  return analyser;
+}
+
+/** Nível de voz atual do J.A.R.V.I.S. (0..1), para animar o holograma. */
+export function getVoiceLevel(): number {
+  if (!analyser || !analyserData) return 0;
+  analyser.getByteTimeDomainData(analyserData as unknown as Uint8Array<ArrayBuffer>);
+  let sum = 0;
+  for (let i = 0; i < analyserData.length; i++) {
+    const v = (analyserData[i]! - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / analyserData.length);
+  return Math.min(1, rms * 3.2);
+}
+
 
 /** Call inside a user gesture (click) to unlock audio playback. */
 export async function primeAudio() {
