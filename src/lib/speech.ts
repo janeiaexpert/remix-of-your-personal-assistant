@@ -248,14 +248,21 @@ export async function speak(
       if (done) break;
       if (value) parser.feed(value);
     }
+    if (!started) {
+      // Nenhum áudio chegou do servidor — usa a voz do navegador.
+      speakNative(text, opts);
+      return;
+    }
     // Schedule onEnd right after last buffer finishes
     const remaining = Math.max(0, lastEndTime - ctx.currentTime);
     window.setTimeout(() => opts.onEnd?.(), remaining * 1000 + 50);
   } catch (err) {
-    if ((err as { name?: string })?.name !== "AbortError") {
+    if ((err as { name?: string })?.name === "AbortError") {
+      opts.onEnd?.();
+    } else {
       console.error("TTS error", err);
+      speakNative(text, opts);
     }
-    opts.onEnd?.();
   } finally {
     if (currentAbort === abort) currentAbort = null;
   }
