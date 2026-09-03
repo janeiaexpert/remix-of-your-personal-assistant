@@ -202,7 +202,7 @@ export async function speak(
     buffer.copyToChannel(floats, 0);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(ctx.destination);
+    source.connect(getAnalyser(ctx));
     if (playhead === 0) playhead = ctx.currentTime + 0.08;
     else playhead = Math.max(playhead, ctx.currentTime);
     source.start(playhead);
