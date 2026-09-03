@@ -139,7 +139,33 @@ export function cancelSpeech() {
     currentAbort.abort();
     currentAbort = null;
   }
+  try { window.speechSynthesis?.cancel(); } catch { /* noop */ }
 }
+
+/** Voz nativa do navegador — usada quando o TTS do servidor não está disponível. */
+function speakNative(text: string, opts: { onStart?: () => void; onEnd?: () => void }) {
+  const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+  if (!synth) {
+    opts.onEnd?.();
+    return;
+  }
+  try {
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "pt-BR";
+    u.rate = 1.02;
+    u.pitch = 0.95;
+    const voice = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith("pt"));
+    if (voice) u.voice = voice;
+    u.onstart = () => opts.onStart?.();
+    u.onend = () => opts.onEnd?.();
+    u.onerror = () => opts.onEnd?.();
+    synth.speak(u);
+  } catch {
+    opts.onEnd?.();
+  }
+}
+
 
 export async function speak(
   text: string,
@@ -176,7 +202,7 @@ export async function speak(
     buffer.copyToChannel(floats, 0);
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.connect(ctx.destination);
+    source.connect(getAnalyser(ctx));
     if (playhead === 0) playhead = ctx.currentTime + 0.08;
     else playhead = Math.max(playhead, ctx.currentTime);
     source.start(playhead);
@@ -196,8 +222,9 @@ export async function speak(
       signal: abort.signal,
     });
     if (!res.ok || !res.body) {
-      console.error("TTS failed", res.status, await res.text().catch(() => ""));
-      opts.onEnd?.();
+      const detail = await res.text().catch(() => "");
+      console.error("TTS failed", res.status, detail);
+      speakNative(text, opts);
       return;
     }
     const parser = createParser({
@@ -221,14 +248,21 @@ export async function speak(
       if (done) break;
       if (value) parser.feed(value);
     }
+    if (!started) {
+      // Nenhum áudio chegou do servidor — usa a voz do navegador.
+      speakNative(text, opts);
+      return;
+    }
     // Schedule onEnd right after last buffer finishes
     const remaining = Math.max(0, lastEndTime - ctx.currentTime);
     window.setTimeout(() => opts.onEnd?.(), remaining * 1000 + 50);
   } catch (err) {
-    if ((err as { name?: string })?.name !== "AbortError") {
+    if ((err as { name?: string })?.name === "AbortError") {
+      opts.onEnd?.();
+    } else {
       console.error("TTS error", err);
+      speakNative(text, opts);
     }
-    opts.onEnd?.();
   } finally {
     if (currentAbort === abort) currentAbort = null;
   }
