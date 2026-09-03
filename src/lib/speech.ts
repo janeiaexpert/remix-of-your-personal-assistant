@@ -139,7 +139,33 @@ export function cancelSpeech() {
     currentAbort.abort();
     currentAbort = null;
   }
+  try { window.speechSynthesis?.cancel(); } catch { /* noop */ }
 }
+
+/** Voz nativa do navegador — usada quando o TTS do servidor não está disponível. */
+function speakNative(text: string, opts: { onStart?: () => void; onEnd?: () => void }) {
+  const synth = typeof window !== "undefined" ? window.speechSynthesis : undefined;
+  if (!synth) {
+    opts.onEnd?.();
+    return;
+  }
+  try {
+    synth.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "pt-BR";
+    u.rate = 1.02;
+    u.pitch = 0.95;
+    const voice = synth.getVoices().find((v) => v.lang?.toLowerCase().startsWith("pt"));
+    if (voice) u.voice = voice;
+    u.onstart = () => opts.onStart?.();
+    u.onend = () => opts.onEnd?.();
+    u.onerror = () => opts.onEnd?.();
+    synth.speak(u);
+  } catch {
+    opts.onEnd?.();
+  }
+}
+
 
 export async function speak(
   text: string,
