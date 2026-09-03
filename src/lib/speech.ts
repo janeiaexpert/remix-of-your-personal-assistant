@@ -222,8 +222,9 @@ export async function speak(
       signal: abort.signal,
     });
     if (!res.ok || !res.body) {
-      console.error("TTS failed", res.status, await res.text().catch(() => ""));
-      opts.onEnd?.();
+      const detail = await res.text().catch(() => "");
+      console.error("TTS failed", res.status, detail);
+      speakNative(text, opts);
       return;
     }
     const parser = createParser({
