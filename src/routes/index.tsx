@@ -1301,7 +1301,7 @@ ngrok http 7842`}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-3 flex items-center gap-2">
+        <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             ref={fileRef}
             type="file"
@@ -1310,25 +1310,28 @@ ngrok http 7842`}
             className="hidden"
             onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }}
           />
+          <div className="flex items-center gap-2 sm:contents">
           <button
             type="button"
             onClick={() => void takePhoto()}
             aria-label="Tirar foto com a câmera"
             title="Tirar foto com a câmera"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud sm:h-12 sm:w-12"
           >
             <Aperture size={18} />
           </button>
+
 
           <button
             type="button"
             onClick={() => setStudioOpen(true)}
             aria-label="Gerar imagem PNG 4:5"
             title="Gerar imagem PNG 4:5"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud sm:h-12 sm:w-12"
           >
             <ImagePlus size={18} />
           </button>
+
 
 
           <button
@@ -1337,7 +1340,7 @@ ngrok http 7842`}
             aria-label="Anexar arquivo ou link"
             title="Anexar imagem, vídeo, áudio, PDF, texto ou link"
             className={cn(
-              "flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition sm:h-12 sm:w-12",
               attachOpen || attachments.length
                 ? "border-hud bg-hud/20 text-hud shadow-hud"
                 : "border-hud/40 bg-hud/10 text-hud hover:bg-hud/20 hover:shadow-hud",
@@ -1345,6 +1348,7 @@ ngrok http 7842`}
           >
             <Paperclip size={18} />
           </button>
+
           {speech.error && !speech.listening && (
             <span role="alert" className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-md border border-destructive/50 bg-card px-3 py-1.5 text-xs text-destructive">{speech.error}</span>
           )}
@@ -1363,7 +1367,7 @@ ngrok http 7842`}
               aria-label={speech.listening ? "Parar" : "Falar"}
               title={speech.listening ? "Parar de ouvir" : "Falar"}
               className={cn(
-                "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
+                "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition sm:h-12 sm:w-12",
                 speech.listening
                   ? "border-gold bg-gold/20 text-gold shadow-[0_0_20px_oklch(0.82_0.14_85/0.5)]"
                   : "border-hud/40 bg-hud/10 text-hud hover:bg-hud/20 hover:shadow-hud",
@@ -1379,7 +1383,10 @@ ngrok http 7842`}
               {speech.listening ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
           )}
+          </div>
+          <div className="flex min-w-0 items-end gap-2 sm:flex-1">
           <textarea
+
             ref={inputRef}
             value={input}
             onChange={(e) => {
@@ -1392,7 +1399,7 @@ ngrok http 7842`}
             placeholder="Fale comigo, senhor..."
             rows={1}
             disabled={loading}
-            className="min-h-12 max-h-40 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-hud/30 bg-input/60 px-4 py-3 font-mono text-base leading-6 text-foreground placeholder:text-muted-foreground/60 focus:border-hud focus:outline-none focus:ring-1 focus:ring-hud sm:text-sm"
+            className="min-h-12 max-h-40 min-w-0 flex-1 resize-none overflow-y-auto rounded-md border border-hud/30 bg-input/60 px-4 py-3 font-mono text-base leading-6 text-foreground placeholder:text-muted-foreground/60 focus:border-hud focus:outline-none focus:ring-1 focus:ring-hud"
           />
 
           <button
@@ -1403,7 +1410,9 @@ ngrok http 7842`}
           >
             <Send size={18} />
           </button>
+          </div>
         </form>
+
 
 
         {!speech.supported && (
@@ -1414,58 +1423,6 @@ ngrok http 7842`}
 
         {studioOpen && <ImageStudio onClose={() => setStudioOpen(false)} />}
 
-        {composeOpen && (
-          <div
-            className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm"
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="flex items-center justify-between border-b border-hud/30 px-4 py-3">
-              <span className="font-mono text-[11px] uppercase tracking-widest text-hud">
-                Mensagem
-              </span>
-              <button
-                type="button"
-                onClick={() => setComposeOpen(false)}
-                aria-label="Fechar"
-                className="flex h-9 w-9 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud hover:bg-hud/20"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <textarea
-              autoFocus
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  setComposeOpen(false);
-                  void send(input);
-                }
-                if (e.key === "Escape") setComposeOpen(false);
-              }}
-              placeholder="Fale comigo, senhor..."
-              className="min-h-0 flex-1 resize-none bg-transparent px-4 py-4 font-mono text-base leading-7 text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
-            />
-            <div className="flex items-center justify-between gap-3 border-t border-hud/30 px-4 py-3">
-              <span className="font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                {input.trim().length} caracteres
-              </span>
-              <button
-                type="button"
-                disabled={loading || (!input.trim() && attachments.length === 0)}
-                onClick={() => {
-                  setComposeOpen(false);
-                  void send(input);
-                }}
-                className="flex items-center gap-2 rounded-md border border-hud bg-hud/20 px-4 py-2 font-mono text-xs uppercase tracking-widest text-hud transition hover:bg-hud/30 hover:shadow-hud disabled:opacity-40"
-              >
-                <Send size={14} /> Enviar
-              </button>
-            </div>
-          </div>
-        )}
 
       </div>
     </div>
