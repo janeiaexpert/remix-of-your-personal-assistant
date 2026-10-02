@@ -38,10 +38,13 @@ export function useWake({
   mode,
   onWake,
   paused,
+  hold,
 }: {
   mode: WakeMode;
   onWake: () => void;
   paused?: boolean;
+  /** Libera o microfone de voz (ex.: enquanto o usuário fala pelo botão). */
+  hold?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [armed, setArmed] = useState(false);
@@ -51,7 +54,7 @@ export function useWake({
   useEffect(() => { onWakeRef.current = onWake; }, [onWake]);
   useEffect(() => { pausedRef.current = !!paused; }, [paused]);
 
-  const wantWord = mode === "word" || mode === "both";
+  const wantWord = (mode === "word" || mode === "both") && !hold;
   const wantClap = mode === "clap" || mode === "both";
   const active = mode !== "off";
 

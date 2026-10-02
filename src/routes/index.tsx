@@ -684,6 +684,7 @@ function Jarvis() {
   const wake = useWake({
     mode: wakeMode,
     paused: speech.listening || loading || speaking,
+    hold: speech.listening,
     onWake: () => {
       void primeAudio();
       if (!speech.listening) speech.start();
@@ -1341,6 +1342,9 @@ ngrok http 7842`}
           >
             <Paperclip size={18} />
           </button>
+          {speech.error && !speech.listening && (
+            <span role="alert" className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-md border border-destructive/50 bg-card px-3 py-1.5 text-xs text-destructive">{speech.error}</span>
+          )}
           {speech.supported && (
             <button
               type="button"
@@ -1356,13 +1360,19 @@ ngrok http 7842`}
               aria-label={speech.listening ? "Parar" : "Falar"}
               title={speech.listening ? "Parar de ouvir" : "Falar"}
               className={cn(
-                "flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
+                "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
                 speech.listening
                   ? "border-gold bg-gold/20 text-gold shadow-[0_0_20px_oklch(0.82_0.14_85/0.5)]"
                   : "border-hud/40 bg-hud/10 text-hud hover:bg-hud/20 hover:shadow-hud",
                 loading && "opacity-40",
               )}
             >
+              {speech.listening && (
+                <span className="pointer-events-none absolute inset-0 rounded-md border-2 border-gold animate-ping" />
+              )}
+              {speech.listening && (
+                <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-destructive ring-2 ring-background animate-pulse" />
+              )}
               {speech.listening ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
           )}

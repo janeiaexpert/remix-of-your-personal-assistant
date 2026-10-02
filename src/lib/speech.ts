@@ -26,6 +26,7 @@ export function useSpeech(onFinal: (text: string) => void) {
   const [listening, setListening] = useState(false);
   const [interim, setInterim] = useState("");
   const [supported, setSupported] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -55,7 +56,13 @@ export function useSpeech(onFinal: (text: string) => void) {
         onFinal(finalText.trim());
       }
     };
-    rec.onerror = () => setListening(false);
+    rec.onerror = (e) => {
+      const err = (e as SpeechRecognitionErrorEvent).error;
+      if (err === "not-allowed" || err === "service-not-allowed") setError("Permissão de microfone negada.");
+      else if (err === "audio-capture") setError("Nenhum microfone encontrado.");
+      else if (err === "no-speech") setError("Não ouvi nada. Tente de novo.");
+      setListening(false);
+    };
     rec.onend = () => {
       setListening(false);
       setInterim("");
@@ -69,17 +76,25 @@ export function useSpeech(onFinal: (text: string) => void) {
 
   const start = () => {
     if (!recRef.current || listening) return;
-    try {
-      recRef.current.start();
-      setListening(true);
-    } catch { /* noop */ }
+    setError(null);
+    // Mostra "ligado" na hora; aguarda o detector de ativação liberar o microfone.
+    setListening(true);
+    const tryStart = (attempt: number) => {
+      try {
+        recRef.current?.start();
+      } catch {
+        if (attempt < 3) window.setTimeout(() => tryStart(attempt + 1), 300);
+        else { setListening(false); setError("Microfone ocupado. Tente novamente."); }
+      }
+    };
+    window.setTimeout(() => tryStart(0), 250);
   };
   const stop = () => {
     if (!recRef.current) return;
     try { recRef.current.stop(); } catch { /* noop */ }
   };
 
-  return { listening, interim, supported, start, stop };
+  return { listening, interim, supported, error, start, stop };
 }
 
 // ------- Server-side TTS playback (Lovable AI, PCM stream) -------
