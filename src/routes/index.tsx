@@ -1343,7 +1343,7 @@ ngrok http 7842`}
             <Paperclip size={18} />
           </button>
           {speech.error && !speech.listening && (
-            <span className="sr-only" role="alert">{speech.error}</span>
+            <span role="alert" className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-md border border-destructive/50 bg-card px-3 py-1.5 text-xs text-destructive">{speech.error}</span>
           )}
           {speech.supported && (
             <button
