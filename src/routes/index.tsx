@@ -161,6 +161,9 @@ function Jarvis() {
   const [wakeOpen, setWakeOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
+  useEffect(() => {
+    if (!input && inputRef.current) inputRef.current.style.height = "";
+  }, [input]);
   const [cameraFacing, setCameraFacing] = useState<"user" | "environment">("user");
   const [visionOpen, setVisionOpen] = useState(false);
   const [visionPrefs, setVisionPrefs] = useState<VisionPrefs>(VISION_DEFAULTS);
