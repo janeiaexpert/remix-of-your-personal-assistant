@@ -1340,7 +1340,7 @@ ngrok http 7842`}
             aria-label="Anexar arquivo ou link"
             title="Anexar imagem, vídeo, áudio, PDF, texto ou link"
             className={cn(
-              "flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition sm:h-12 sm:w-12",
               attachOpen || attachments.length
                 ? "border-hud bg-hud/20 text-hud shadow-hud"
                 : "border-hud/40 bg-hud/10 text-hud hover:bg-hud/20 hover:shadow-hud",
@@ -1348,6 +1348,7 @@ ngrok http 7842`}
           >
             <Paperclip size={18} />
           </button>
+
           {speech.error && !speech.listening && (
             <span role="alert" className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-md border border-destructive/50 bg-card px-3 py-1.5 text-xs text-destructive">{speech.error}</span>
           )}
@@ -1366,7 +1367,7 @@ ngrok http 7842`}
               aria-label={speech.listening ? "Parar" : "Falar"}
               title={speech.listening ? "Parar de ouvir" : "Falar"}
               className={cn(
-                "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-md border transition",
+                "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-md border transition sm:h-12 sm:w-12",
                 speech.listening
                   ? "border-gold bg-gold/20 text-gold shadow-[0_0_20px_oklch(0.82_0.14_85/0.5)]"
                   : "border-hud/40 bg-hud/10 text-hud hover:bg-hud/20 hover:shadow-hud",
@@ -1382,7 +1383,10 @@ ngrok http 7842`}
               {speech.listening ? <MicOff size={18} /> : <Mic size={18} />}
             </button>
           )}
+          </div>
+          <div className="flex min-w-0 items-end gap-2 sm:flex-1">
           <textarea
+
             ref={inputRef}
             value={input}
             onChange={(e) => {
