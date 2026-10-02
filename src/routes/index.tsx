@@ -1301,7 +1301,7 @@ ngrok http 7842`}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="mt-3 flex items-center gap-2">
+        <form onSubmit={handleSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             ref={fileRef}
             type="file"
@@ -1310,25 +1310,28 @@ ngrok http 7842`}
             className="hidden"
             onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }}
           />
+          <div className="flex items-center gap-2 sm:contents">
           <button
             type="button"
             onClick={() => void takePhoto()}
             aria-label="Tirar foto com a câmera"
             title="Tirar foto com a câmera"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud sm:h-12 sm:w-12"
           >
             <Aperture size={18} />
           </button>
+
 
           <button
             type="button"
             onClick={() => setStudioOpen(true)}
             aria-label="Gerar imagem PNG 4:5"
             title="Gerar imagem PNG 4:5"
-            className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-hud/40 bg-hud/10 text-hud transition hover:bg-hud/20 hover:shadow-hud sm:h-12 sm:w-12"
           >
             <ImagePlus size={18} />
           </button>
+
 
 
           <button
