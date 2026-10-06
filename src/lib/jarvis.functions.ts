@@ -9,6 +9,7 @@ const InputSchema = z.object({
   messages: z.array(z.any()).min(1),
   memories: z.array(z.string()).default([]),
   hasBridge: z.boolean().default(false),
+  skills: z.array(z.object({ name: z.string(), instructions: z.string() })).default([]),
 });
 
 const BASE_PROMPT = `Você é J.A.R.V.I.S. (Just A Rather Very Intelligent System), o assistente pessoal de IA de Tony Stark.
@@ -53,14 +54,20 @@ Regras de uso das ferramentas locais:
 - Se o senhor pedir algo que exige a máquina dele mas a bridge não está conectada, avise em uma frase e sugira rodar \`python3 agent/jarvis_agent.py\`.
 - Depois de executar, resuma o resultado no seu estilo — não despeje stdout cru inteiro se for grande.
 
+Agente autônomo:
+- Para tarefas grandes, aja como um agente: planeje mentalmente, execute várias ferramentas em sequência e só pare quando a tarefa estiver concluída ou precisar do senhor.
+- Cada ação local (shell, arquivos, abrir apps, build_project) é aprovada pelo senhor antes de rodar. Se ele recusar, adapte o plano sem insistir.
+- Para criar sites, apps ou sistemas use build_project com TODOS os arquivos completos (código real e funcional, nunca trechos). Ele mostra a prévia no painel, oferece download em ZIP e salva no computador se a bridge estiver conectada.
+- O código vai SOMENTE dentro de build_project; a resposta falada continua curta (1-2 frases).
+
 Regras gerais:
 - Nunca chute datas, cotações, ou o conteúdo de arquivos — chame a ferramenta.
 - Depois de qualquer ferramenta, sintetize em 1-2 frases.`;
 
-const CLIENT_TOOL_NAMES = new Set(["shell_exec", "fs_read", "fs_write", "fs_list", "open_app"]);
+const CLIENT_TOOL_NAMES = new Set(["shell_exec", "fs_read", "fs_write", "fs_list", "open_app", "build_project"]);
 
 
-function buildSystem(memories: string[], hasBridge: boolean): string {
+function buildSystem(memories: string[], hasBridge: boolean, skills: { name: string; instructions: string }[] = []): string {
   const now = new Date();
   const dateStr = new Intl.DateTimeFormat("pt-BR", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -70,7 +77,10 @@ function buildSystem(memories: string[], hasBridge: boolean): string {
   const bridgeLine = hasBridge
     ? "Bridge local: CONECTADA. As ferramentas shell_exec/fs_* estão operacionais na máquina do senhor."
     : "Bridge local: OFFLINE. As ferramentas shell_exec/fs_* NÃO funcionam agora — não tente usá-las; peça ao senhor para rodar 'python3 agent/jarvis_agent.py' se ele precisar.";
-  const base = `${header}\n${bridgeLine}\n\n${BASE_PROMPT}`;
+  const skillBlock = skills.length
+    ? `\n\nSkills ativas (siga quando a tarefa combinar):\n${skills.map((k) => `### ${k.name}\n${k.instructions}`).join("\n\n")}`
+    : "";
+  const base = `${header}\n${bridgeLine}\n\n${BASE_PROMPT}${skillBlock}`;
   if (!memories.length) return base;
   const list = memories.map((m, i) => `${i + 1}. ${m}`).join("\n");
   return `${base}\n\nMemória de longo prazo sobre o usuário:\n${list}`;
@@ -251,17 +261,26 @@ export const askJarvis = createServerFn({ method: "POST" })
       }),
     });
 
+    const build_project = tool({
+      description: "Cria um site, aplicativo ou sistema completo. Envie todos os arquivos com conteúdo completo. Mostra prévia no painel, permite baixar ZIP e salvar no computador.",
+      inputSchema: z.object({
+        name: z.string().describe("Nome curto da pasta, ex: 'loja-cafe'."),
+        description: z.string().optional(),
+        files: z.array(z.object({ path: z.string().describe("Caminho relativo, ex: 'index.html'."), content: z.string() })),
+      }),
+    });
+
     try {
       const result = await generateText({
         model: gateway("google/gemini-3-flash-preview"),
-        system: buildSystem(data.memories, data.hasBridge),
+        system: buildSystem(data.memories, data.hasBridge, data.skills),
         messages: data.messages as ModelMessage[],
-        maxOutputTokens: 400,
+        maxOutputTokens: 32000,
         tools: data.hasBridge
-          ? { web_search, get_datetime, fetch_url, run_js, shell_exec, fs_read, fs_write, fs_list, open_app }
-          : { web_search, get_datetime, fetch_url, run_js },
+          ? { web_search, get_datetime, fetch_url, run_js, build_project, shell_exec, fs_read, fs_write, fs_list, open_app }
+          : { web_search, get_datetime, fetch_url, run_js, build_project },
 
-        stopWhen: stepCountIs(12),
+        stopWhen: stepCountIs(50),
       });
 
       const pending = result.toolCalls
