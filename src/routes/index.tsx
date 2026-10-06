@@ -24,13 +24,16 @@ import QRCode from "qrcode";
 import { cn } from "@/lib/utils";
 import { ImageStudio } from "@/components/ImageStudio";
 import { CoverScreen } from "@/components/CoverScreen";
+import { ProjectStudio, type Project } from "@/components/ProjectStudio";
+import { BUILTIN_SKILLS, loadCustomSkills, saveCustomSkills, loadActiveSkills, saveActiveSkills, type Skill } from "@/lib/skills";
+import { Wand2 } from "lucide-react";
 
 type Msg = { role: "user" | "assistant"; content: string; attachments?: Attachment[] };
 const STORAGE_KEY = "jarvis:conversation:v1";
 const MEMORY_KEY = "jarvis:memories:v1";
 const WAKE_KEY = "jarvis:wake:v1";
 const CAMERA_KEY = "jarvis:camera:v1";
-const MAX_MEMORIES = 60;
+const MAX_MEMORIES = 500;
 const GREETING: Msg = {
   role: "assistant",
   content: "Sistemas online. Ao seu dispor, senhor. Em que posso ajudá-lo?",
@@ -160,7 +163,30 @@ function Jarvis() {
   const [wakeMode, setWakeMode] = useState<WakeMode>("off");
   const [wakeOpen, setWakeOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [customSkills, setCustomSkills] = useState<Skill[]>([]);
+  const [activeSkills, setActiveSkills] = useState<string[]>(BUILTIN_SKILLS.map((k) => k.id));
+  const [skillsHydrated, setSkillsHydrated] = useState(false);
+  useEffect(() => {
+    setCustomSkills(loadCustomSkills());
+    setActiveSkills(loadActiveSkills());
+    setSkillsHydrated(true);
+  }, []);
+  useEffect(() => { if (skillsHydrated) saveCustomSkills(customSkills); }, [customSkills, skillsHydrated]);
+  useEffect(() => { if (skillsHydrated) saveActiveSkills(activeSkills); }, [activeSkills, skillsHydrated]);
+  const skillsRef = useRef<{ name: string; instructions: string }[]>([]);
+  useEffect(() => {
+    skillsRef.current = [...BUILTIN_SKILLS, ...customSkills]
+      .filter((k) => activeSkills.includes(k.id))
+      .map((k) => ({ name: k.name, instructions: k.instructions }));
+  }, [customSkills, activeSkills]);
+  const [project, setProject] = useState<Project | null>(null);
+  const [approval, setApproval] = useState<{ name: string; input: Record<string, unknown>; resolve: (ok: boolean) => void } | null>(null);
+  const askApproval = useCallback(
+    (name: string, input: Record<string, unknown>) =>
+      new Promise<boolean>((resolve) => setApproval({ name, input, resolve })),
+    [],
+  );
   useEffect(() => {
     if (!input && inputRef.current) inputRef.current.style.height = "";
   }, [input]);
@@ -608,7 +634,7 @@ function Jarvis() {
 
 
         let finalText = "";
-        const MAX_ROUNDS = 6;
+        const MAX_ROUNDS = 30;
         for (let round = 0; round < MAX_ROUNDS; round++) {
           const cfg = bridgeRef.current;
           const res = await ask({
@@ -616,22 +642,45 @@ function Jarvis() {
               messages: modelMessages,
               memories: currentMemories,
               hasBridge: !!cfg && bridgeStatus === "online",
+              skills: skillsRef.current,
             },
           });
           finalText = res.text || finalText;
           const responseMsgs = JSON.parse(res.responseMessagesJson) as unknown[];
           modelMessages = [...modelMessages, ...responseMsgs];
           if (!res.pending.length) break;
-          if (!cfg) {
+          const onlyBuild = res.pending.every((c) => c.name === "build_project");
+          if (!cfg && !onlyBuild) {
             finalText = "A bridge local está offline, senhor — não posso tocar na sua máquina agora. Rode `python3 agent/jarvis_agent.py` e cole a URL + token no painel do plug.";
             break;
           }
-          const toolResults = await Promise.all(
-            res.pending.map(async (call) => {
+          const toolResults: { toolCallId: string; toolName: string; output: unknown }[] = [];
+          for (const call of res.pending) {
+            toolResults.push(await (async () => {
               let input: Record<string, unknown> = {};
               try { input = JSON.parse(call.inputJson) as Record<string, unknown>; } catch { /* */ }
+              const ok = await askApproval(call.name, input);
+              if (!ok) {
+                setToolLog((l) => [...l, `✖ ${call.name} recusado`]);
+                return { toolCallId: call.id, toolName: call.name, output: { error: "O senhor recusou esta ação. Não repita; pergunte como prefere seguir." } };
+              }
               setToolLog((l) => [...l, `▶ ${call.name} ${JSON.stringify(input).slice(0, 120)}`]);
               try {
+                if (call.name === "build_project") {
+                  const files = (Array.isArray(input.files) ? input.files : []) as { path: string; content: string }[];
+                  const name = String(input.name || "projeto").replace(/[^\w.-]+/g, "-");
+                  const proj: Project = { name, description: String(input.description ?? ""), files };
+                  let savedTo: string | undefined;
+                  if (cfg && bridgeStatus === "online") {
+                    for (const f of files) {
+                      await runTool(cfg, "fs_write", { path: `JarvisProjects/${name}/${f.path}`, content: f.content });
+                    }
+                    savedTo = `JarvisProjects/${name}`;
+                  }
+                  setProject({ ...proj, savedTo });
+                  return { toolCallId: call.id, toolName: call.name, output: { ok: true, files: files.length, preview: "aberta no painel", savedTo: savedTo ?? "não salvo (bridge offline) — ZIP disponível" } };
+                }
+                if (!cfg) throw new Error("Bridge offline");
                 const output = await runTool(cfg, call.name, input);
                 return { toolCallId: call.id, toolName: call.name, output };
               } catch (e) {
@@ -640,8 +689,8 @@ function Jarvis() {
                   output: { error: e instanceof Error ? e.message : String(e) },
                 };
               }
-            }),
-          );
+            })());
+          }
           modelMessages.push({
             role: "tool",
             content: toolResults.map((r) => ({
@@ -675,7 +724,7 @@ function Jarvis() {
         setTimeout(() => inputRef.current?.focus(), 0);
       }
     },
-    [ask, extract, loading, messages, voiceOn, bridgeStatus, attachments, screenOn, grabScreenshot],
+    [ask, extract, loading, messages, voiceOn, bridgeStatus, attachments, screenOn, grabScreenshot, askApproval],
   );
 
 
@@ -817,6 +866,9 @@ function Jarvis() {
               {voiceOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </IconButton>
 
+            <IconButton title="Skills" onClick={() => setSkillsOpen((o) => !o)} active={skillsOpen}>
+              <Wand2 size={16} />
+            </IconButton>
             <IconButton
               title={`Memória (${memories.length})`}
               onClick={() => setMemoryOpen((o) => !o)}
@@ -1153,6 +1205,49 @@ ngrok http 7842`}
           </div>
         )}
 
+        {skillsOpen && (
+          <SkillsPanel
+            custom={customSkills}
+            active={activeSkills}
+            onToggle={(id) => setActiveSkills((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))}
+            onAdd={(name, instructions) => {
+              const id = `c-${Date.now()}`;
+              setCustomSkills((c) => [...c, { id, name, instructions }]);
+              setActiveSkills((a) => [...a, id]);
+            }}
+            onRemove={(id) => setCustomSkills((c) => c.filter((k) => k.id !== id))}
+            onClose={() => setSkillsOpen(false)}
+          />
+        )}
+        {approval && (
+          <div className="fixed inset-x-3 bottom-24 z-50 mx-auto max-w-lg rounded-xl border border-border bg-card p-4 shadow-xl">
+            <div className="mb-1 text-sm font-semibold text-foreground">Aprovar ação: {approval.name}</div>
+            <pre className="mb-3 max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-muted p-2 text-xs text-muted-foreground">
+              {approval.name === "build_project"
+                ? `Projeto "${String(approval.input.name)}" — ${(approval.input.files as unknown[] | undefined)?.length ?? 0} arquivos:\n${((approval.input.files as { path: string }[] | undefined) ?? []).map((f) => f.path).join("\n")}`
+                : JSON.stringify(approval.input, null, 2).slice(0, 1500)}
+            </pre>
+            <div className="flex justify-end gap-2">
+              <button className="rounded-md border border-border px-3 py-1.5 text-sm" onClick={() => { approval.resolve(false); setApproval(null); }}>Recusar</button>
+              <button className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground" onClick={() => { approval.resolve(true); setApproval(null); }}>Aprovar</button>
+            </div>
+          </div>
+        )}
+        {project && (
+          <ProjectStudio
+            project={project}
+            onClose={() => setProject(null)}
+            canSaveLocal={!!bridgeRef.current && bridgeStatus === "online"}
+            onSaveLocal={async () => {
+              const cfg = bridgeRef.current;
+              if (!cfg) throw new Error("Bridge offline");
+              for (const f of project.files) {
+                await runTool(cfg, "fs_write", { path: `JarvisProjects/${project.name}/${f.path}`, content: f.content });
+              }
+              setProject({ ...project, savedTo: `JarvisProjects/${project.name}` });
+            }}
+          />
+        )}
         {memoryOpen && (
           <MemoryPanel
             memories={memories}
@@ -1692,6 +1787,55 @@ function MemoryPanel({
           <Plus size={14} />
         </button>
       </form>
+    </div>
+  );
+}
+
+function SkillsPanel({
+  custom, active, onToggle, onAdd, onRemove, onClose,
+}: {
+  custom: Skill[];
+  active: string[];
+  onToggle: (id: string) => void;
+  onAdd: (name: string, instructions: string) => void;
+  onRemove: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [instr, setInstr] = useState("");
+  const all = [...BUILTIN_SKILLS, ...custom];
+  return (
+    <div className="fixed inset-x-3 top-16 z-40 mx-auto max-h-[75vh] max-w-lg overflow-auto rounded-xl border border-border bg-card p-4 shadow-xl">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="font-semibold text-foreground">Skills do J.A.R.V.I.S.</div>
+        <button aria-label="Fechar" onClick={onClose}><X size={16} /></button>
+      </div>
+      <div className="space-y-2">
+        {all.map((k) => (
+          <div key={k.id} className="flex items-start gap-2 rounded-lg border border-border p-2">
+            <input type="checkbox" className="mt-1" checked={active.includes(k.id)} onChange={() => onToggle(k.id)} />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-foreground">{k.name}{k.builtin ? "" : " · sua"}</div>
+              <div className="line-clamp-2 text-xs text-muted-foreground">{k.instructions}</div>
+            </div>
+            {!k.builtin && (
+              <button aria-label="Remover skill" onClick={() => onRemove(k.id)}><Trash2 size={14} /></button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 space-y-2 border-t border-border pt-3">
+        <div className="text-sm font-medium text-foreground">Nova skill</div>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome (ex: E-commerce)" className="w-full rounded-md border border-border bg-background p-2 text-base md:text-sm" />
+        <textarea value={instr} onChange={(e) => setInstr(e.target.value)} rows={4} placeholder="Instruções: como ele deve trabalhar nessa tarefa…" className="w-full rounded-md border border-border bg-background p-2 text-base md:text-sm" />
+        <button
+          className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+          disabled={!name.trim() || !instr.trim()}
+          onClick={() => { onAdd(name.trim(), instr.trim()); setName(""); setInstr(""); }}
+        >
+          Adicionar skill
+        </button>
+      </div>
     </div>
   );
 }
