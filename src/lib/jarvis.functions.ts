@@ -43,6 +43,7 @@ Ferramentas LOCAIS (bridge na máquina do usuário — USE quando ele pedir aç�
 - fs_write — escreve/anexa um arquivo no disco do usuário.
 - fs_list — lista o conteúdo de um diretório.
 - open_app — abre um APLICATIVO, arquivo ou NAVEGADOR/URL na máquina do usuário. Ex: target "Google Chrome", "Spotify", "code", "https://youtube.com". Use isto (não shell_exec) quando o senhor pedir "abra o Chrome", "abra o YouTube", "abra o VS Code".
+- type_text — digita texto na janela ativa do computador do senhor (como um teclado) e/ou envia teclas (enter, tab, ctrl+s). Use quando ele pedir "escreva no Word/bloco de notas/WhatsApp". Antes, abra o app com open_app se preciso; há 2s para ele focar a janela.
 
 Visão (imagens, vídeos e tela):
 - O senhor pode anexar imagens/vídeos/PDFs ou colar links de mídia; eles chegam junto da mensagem. Analise-os de fato e descreva/oriente com precisão.
@@ -64,7 +65,7 @@ Regras gerais:
 - Nunca chute datas, cotações, ou o conteúdo de arquivos — chame a ferramenta.
 - Depois de qualquer ferramenta, sintetize em 1-2 frases.`;
 
-const CLIENT_TOOL_NAMES = new Set(["shell_exec", "fs_read", "fs_write", "fs_list", "open_app", "build_project"]);
+const CLIENT_TOOL_NAMES = new Set(["shell_exec", "fs_read", "fs_write", "fs_list", "open_app", "build_project", "type_text"]);
 
 
 function buildSystem(memories: string[], hasBridge: boolean, skills: { name: string; instructions: string }[] = []): string {
@@ -261,6 +262,14 @@ export const askJarvis = createServerFn({ method: "POST" })
       }),
     });
 
+    const type_text = tool({
+      description: "Digita texto na janela ativa do computador do usuário, como um teclado, e/ou envia teclas especiais.",
+      inputSchema: z.object({
+        text: z.string().optional().describe("Texto a digitar."),
+        keys: z.string().optional().describe("Tecla/atalho após o texto: 'enter', 'tab', 'ctrl+s'."),
+        delay: z.number().optional().describe("Segundos de espera antes de digitar (default 2)."),
+      }),
+    });
     const build_project = tool({
       description: "Cria um site, aplicativo ou sistema completo. Envie todos os arquivos com conteúdo completo. Mostra prévia no painel, permite baixar ZIP e salvar no computador.",
       inputSchema: z.object({
@@ -277,7 +286,7 @@ export const askJarvis = createServerFn({ method: "POST" })
         messages: data.messages as ModelMessage[],
         maxOutputTokens: 32000,
         tools: data.hasBridge
-          ? { web_search, get_datetime, fetch_url, run_js, build_project, shell_exec, fs_read, fs_write, fs_list, open_app }
+          ? { web_search, get_datetime, fetch_url, run_js, build_project, shell_exec, fs_read, fs_write, fs_list, open_app, type_text }
           : { web_search, get_datetime, fetch_url, run_js, build_project },
 
         stopWhen: stepCountIs(50),

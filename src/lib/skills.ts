@@ -29,6 +29,13 @@ export const BUILTIN_SKILLS: Skill[] = [
     instructions:
       "Para landing pages: seções herói, benefícios, prova social, preços e CTA. Copy persuasivo em português. Entregue via build_project.",
   },
+  {
+    id: "keyboard",
+    name: "Escrever com o teclado",
+    builtin: true,
+    instructions:
+      "Quando o senhor pedir para escrever num programa do computador (Word, Bloco de Notas, e-mail, WhatsApp): 1) abra o app com open_app se não estiver aberto; 2) avise em uma frase para ele clicar onde o texto deve entrar; 3) use type_text com o texto completo e, se pedido, keys 'enter' ou 'ctrl+s'. Requer bridge conectada.",
+  },
 ];
 
 const CUSTOM_KEY = "jarvis:skills:custom:v1";

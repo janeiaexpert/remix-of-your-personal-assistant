@@ -84,6 +84,8 @@ export async function runTool(
       return call(cfg, "/list", { path: input.path ?? "." });
     case "open_app":
       return call(cfg, "/open", { target: input.target, args: input.args });
+    case "type_text":
+      return call(cfg, "/type", { text: input.text ?? "", keys: input.keys ?? "", delay: input.delay ?? 2 });
     default:
       throw new Error(`Unknown local tool: ${name}`);
 

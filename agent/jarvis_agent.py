@@ -139,6 +139,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._list(body)
             if self.path == "/open":
                 return self._open(body)
+            if self.path == "/type":
+                return self._type(body)
 
         except Exception as exc:  # noqa: BLE001
             return _json(self, 500, {"error": str(exc)})
@@ -301,6 +303,58 @@ class Handler(BaseHTTPRequestHandler):
         return _json(self, 200, {"ok": False, "target": target, "platform": plat, "errors": errors})
 
 
+    def _type(self, body: dict) -> None:
+        """Digita texto (ou envia teclas) na janela ativa do usuário."""
+        import time
+        text = body.get("text") or ""
+        keys = body.get("keys") or ""  # ex: "enter", "ctrl+s"
+        delay = min(float(body.get("delay") or 2), 10)
+        if not text and not keys:
+            return _json(self, 400, {"error": "text or keys required"})
+        time.sleep(delay)  # tempo para o usuário focar a janela certa
+        plat = sys.platform
+        try:
+            if plat.startswith("win"):
+                ps = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
+                script = "Add-Type -AssemblyName System.Windows.Forms;"
+                env = dict(os.environ, JARVIS_TEXT=text)
+                if text:
+                    script += "Set-Clipboard -Value $env:JARVIS_TEXT; Start-Sleep -Milliseconds 150; [System.Windows.Forms.SendKeys]::SendWait('^v');"
+                if keys:
+                    win = {"enter": "{ENTER}", "tab": "{TAB}", "esc": "{ESC}", "backspace": "{BACKSPACE}"}
+                    seq = keys.lower()
+                    mapped = win.get(seq) or seq.replace("ctrl+", "^").replace("shift+", "+").replace("alt+", "%")
+                    script += f"[System.Windows.Forms.SendKeys]::SendWait('{mapped}');"
+                proc = subprocess.run([ps, "-NoProfile", "-STA", "-Command", script], capture_output=True, text=True, env=env, timeout=30)
+            elif plat == "darwin":
+                lines = []
+                if text:
+                    esc = text.replace("\\", "\\\\").replace('"', '\\"')
+                    lines.append(f'tell application "System Events" to keystroke "{esc}"')
+                if keys:
+                    k = keys.lower()
+                    if k == "enter":
+                        lines.append('tell application "System Events" to key code 36')
+                    elif "+" in k:
+                        mod, key = k.rsplit("+", 1)
+                        mods = {"ctrl": "control down", "cmd": "command down", "shift": "shift down", "alt": "option down"}
+                        lines.append(f'tell application "System Events" to keystroke "{key}" using {{{mods.get(mod, "command down")}}}')
+                args = ["osascript"]
+                for l in lines:
+                    args += ["-e", l]
+                proc = subprocess.run(args, capture_output=True, text=True, timeout=30)
+            else:
+                if not shutil.which("xdotool"):
+                    return _json(self, 200, {"ok": False, "error": "instale xdotool: sudo apt install xdotool"})
+                proc = None
+                if text:
+                    proc = subprocess.run(["xdotool", "type", "--delay", "15", text], capture_output=True, text=True, timeout=60)
+                if keys:
+                    proc = subprocess.run(["xdotool", "key", keys.replace("enter", "Return")], capture_output=True, text=True, timeout=10)
+            ok = proc is None or proc.returncode == 0
+            return _json(self, 200, {"ok": ok, "typed": len(text), "keys": keys, "stderr": (proc.stderr if proc else "")[-2000:]})
+        except Exception as exc:  # noqa: BLE001
+            return _json(self, 200, {"ok": False, "error": str(exc)})
 
 
 def main() -> None:
