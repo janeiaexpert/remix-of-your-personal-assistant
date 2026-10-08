@@ -144,7 +144,9 @@ function Jarvis() {
   const [memoryOpen, setMemoryOpen] = useState(false);
   const [newMemory, setNewMemory] = useState("");
   const [bridge, setBridge] = useState<BridgeConfig | null>(null);
-  const [bridgeStatus, setBridgeStatus] = useState<"offline" | "online" | "error">("offline");
+  const [bridgeStatus, setBridgeStatus] = useState<"offline" | "online" | "error" | "reconnecting">("offline");
+  const [keepAlive, setKeepAlive] = useState(true);
+  const [autoWake, setAutoWake] = useState(true);
   const [bridgeOpen, setBridgeOpen] = useState(false);
   const [bridgeUrl, setBridgeUrl] = useState("http://127.0.0.1:7842");
   const [bridgeToken, setBridgeToken] = useState("");
@@ -237,8 +239,12 @@ function Jarvis() {
     setCameraFacing(loadCameraFacing());
     setVisionPrefs(loadVisionPrefs());
     try {
+      const ka = window.localStorage.getItem("jarvis:bridge:keepalive:v1");
+      if (ka === "0") setKeepAlive(false);
+      const aw = window.localStorage.getItem("jarvis:wake:auto:v1");
+      if (aw === "0") setAutoWake(false);
       const w = window.localStorage.getItem(WAKE_KEY);
-      if (w === "word" || w === "clap" || w === "both") setWakeMode(w);
+      if (aw !== "0" && (w === "word" || w === "clap" || w === "both")) setWakeMode(w);
     } catch { /* ignore */ }
 
     const paired = readPairingFromHash();
@@ -302,6 +308,46 @@ function Jarvis() {
     if (!hydrated) return;
     try { window.localStorage.setItem(MEMORY_KEY, JSON.stringify(memories)); } catch { /* quota */ }
   }, [memories, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    try {
+      localStorage.setItem("jarvis:bridge:keepalive:v1", keepAlive ? "1" : "0");
+      localStorage.setItem("jarvis:wake:auto:v1", autoWake ? "1" : "0");
+    } catch { /* */ }
+  }, [keepAlive, autoWake, hydrated]);
+
+  // Keepalive: verifica a bridge a cada 15s e reconecta sozinho.
+  useEffect(() => {
+    if (!hydrated || !keepAlive) return;
+    let fails = 0;
+    let stopped = false;
+    const tick = async () => {
+      const cfg = bridgeRef.current ?? loadBridge();
+      if (!cfg || stopped) return;
+      try {
+        await health(cfg);
+        if (stopped) return;
+        fails = 0;
+        if (!bridgeRef.current) { bridgeRef.current = cfg; setBridge(cfg); }
+        setBridgeStatus("online");
+      } catch {
+        fails++;
+        if (!stopped) setBridgeStatus(fails >= 4 ? "error" : "reconnecting");
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 15000);
+    const onWake = () => { if (document.visibilityState === "visible") void tick(); };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("online", onWake);
+    return () => {
+      stopped = true;
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("online", onWake);
+    };
+  }, [hydrated, keepAlive]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -926,6 +972,10 @@ function Jarvis() {
                 </button>
               ))}
             </div>
+            <label className="mt-3 flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
+              <input type="checkbox" checked={autoWake} onChange={(e) => setAutoWake(e.target.checked)} />
+              Ligar automaticamente ao abrir o painel
+            </label>
             <p className="mt-3 font-mono text-[10px] text-muted-foreground">
               Estado:{" "}
               <span className={wake.armed ? "text-hud" : "text-muted-foreground"}>
@@ -1028,8 +1078,16 @@ function Jarvis() {
           <div className="mt-4 rounded-lg border border-hud/30 bg-card/60 p-4 shadow-hud backdrop-blur-sm">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="font-mono text-xs uppercase tracking-[0.3em] text-hud text-glow">
-                Bridge local — {bridgeStatus}
+                Bridge local — {bridgeStatus === "reconnecting" ? "reconectando…" : bridgeStatus}
               </h2>
+              <button
+                type="button"
+                onClick={() => setKeepAlive((k) => !k)}
+                className={cn("ml-auto mr-3 rounded border px-2 py-1 font-mono text-[10px]", keepAlive ? "border-hud bg-hud/15 text-hud" : "border-hud/25 text-muted-foreground")}
+                title="Manter a bridge sempre conectada"
+              >
+                Manter ligada: {keepAlive ? "ON" : "OFF"}
+              </button>
               <button type="button" onClick={() => setBridgeOpen(false)} className="text-hud/60 hover:text-hud">
                 <X size={14} />
               </button>
