@@ -115,7 +115,17 @@ function mergeMemories(existing: string[], incoming: string[]): string[] {
   return merged.slice(-MAX_MEMORIES);
 }
 
-export const Route = createFileRoute("/")({ component: Jarvis });
+export const Route = createFileRoute("/")({
+  component: Jarvis,
+  head: () => ({ meta: [
+    { title: "J.A.R.V.I.S. — Assistente pessoal" },
+    { name: "description", content: "Converse com J.A.R.V.I.S., pesquise na internet e use ferramentas pessoais com aprovação." },
+    { property: "og:title", content: "J.A.R.V.I.S. — Assistente pessoal" },
+    { property: "og:description", content: "Seu painel J.A.R.V.I.S. para conversas, pesquisas e ferramentas pessoais." },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+  ] }),
+});
 
 function loadMessages(): Msg[] {
   if (typeof window === "undefined") return [GREETING];

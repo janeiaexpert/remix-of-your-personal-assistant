@@ -30,7 +30,7 @@
       {
         "name": "web_search",
         "title": "Busca web",
-        "description": "Busca web em tempo real via DuckDuckGo (sem chave de API). Use para notícias, cotações, clima, esportes e eventos recentes.",
+        "description": "Pesquisa assuntos na internet em tempo real com fontes e links, com alternativa automática se a primeira fonte falhar.",
         "annotations": {
           "readOnlyHint": true,
           "openWorldHint": true
