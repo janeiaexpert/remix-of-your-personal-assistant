@@ -2,35 +2,6 @@ import { defineTool, ToolError } from "@lovable.dev/mcp-js";
 import { z } from "zod";
 import { searchWeb } from "../../web-search";
 
-type SearchHit = { title: string; url: string; snippet: string };
-
-function decodeHtml(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCharCode(parseInt(n, 10)));
-}
-
-function stripTags(s: string): string {
-  return decodeHtml(s.replace(/<[^>]+>/g, "")).replace(/\s+/g, " ").trim();
-}
-
-function unwrapDdgUrl(href: string): string {
-  try {
-    const m = href.match(/[?&]uddg=([^&]+)/);
-    if (m) return decodeURIComponent(m[1]);
-    if (href.startsWith("//")) return "https:" + href;
-    return href;
-  } catch {
-    return href;
-  }
-}
-
 export default defineTool({
   name: "web_search",
   title: "Busca web",
