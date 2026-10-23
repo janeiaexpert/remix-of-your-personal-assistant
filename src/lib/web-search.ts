@@ -1,4 +1,5 @@
 export type SearchHit = { title: string; url: string; snippet: string };
+export type SearchRequest = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export function decodeSearchText(value: string): string {
   return value.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
@@ -50,7 +51,7 @@ export function parseSearchResults(text: string, format: "html" | "rss", limit: 
   return results.slice(0, limit);
 }
 
-export async function searchWeb(query: string, maxResults = 5, request: typeof fetch = fetch) {
+export async function searchWeb(query: string, maxResults = 5, request: SearchRequest = fetch) {
   const cleanQuery = query.trim();
   if (!cleanQuery) throw new Error("Informe um assunto para pesquisar.");
   const limit = Math.max(1, Math.min(10, Math.trunc(maxResults)));

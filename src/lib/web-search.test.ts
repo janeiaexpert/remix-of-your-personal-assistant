@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
-import { parseSearchResults, searchWeb } from "./web-search";
+import { parseSearchResults, searchWeb, type SearchRequest } from "./web-search";
 
 const rss = '<rss><channel><item><title>NASA &amp; Artemis</title><link>https://www.nasa.gov/artemis/</link><description>Notícias da missão</description></item></channel></rss>';
 
@@ -11,7 +11,7 @@ describe("web research", () => {
   });
   test("falls back when search receives an ant robot challenge", async () => {
     const calls: string[] = [];
-    const request: typeof fetch = async (input) => {
+    const request: SearchRequest = async (input) => {
       calls.push(String(input));
       return calls.length === 1 ? new Response('anomaly.js', { status: 202 }) : new Response(rss);
     };
@@ -23,12 +23,12 @@ describe("web research", () => {
   });
   test("retries empty successful pages rather than reporting no results", async () => {
     let count = 0;
-    const request: typeof fetch = async () => new Response(++count === 1 ? '<html></html>' : rss);
+    const request: SearchRequest = async () => new Response(++count === 1 ? '<html></html>' : rss);
     expect((await searchWeb("NASA", 5, request)).results.length).toBe(1);
     expect(count).toBe(2);
   });
   test("reports an error when every source is unavailable", async () => {
-    const request: typeof fetch = async () => new Response("blocked", { status: 403 });
+    const request: SearchRequest = async () => new Response("blocked", { status: 403 });
     await expect(searchWeb("NASA", 5, request)).rejects.toThrow("Não consegui obter resultados");
   });
   test("deduplicates sources, respects limits and rejects unsafe links", () => {
