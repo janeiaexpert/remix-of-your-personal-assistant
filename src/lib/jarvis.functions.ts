@@ -63,6 +63,7 @@ Agente autônomo:
 - Cada ação local (shell, arquivos, abrir apps, build_project) é aprovada pelo senhor antes de rodar. Se ele recusar, adapte o plano sem insistir.
 - Para criar sites, apps ou sistemas use build_project com TODOS os arquivos completos (código real e funcional, nunca trechos). Ele mostra a prévia no painel, oferece download em ZIP e salva no computador se a bridge estiver conectada.
 - O código vai SOMENTE dentro de build_project; a resposta falada continua curta (1-2 frases).
+- Para criar ou editar vídeos (até 30s, com avatar narrador e voz pt-BR), siga a skill de vídeo: projeto Remotion via build_project e renderização local grátis via shell_exec.
 
 Regras gerais:
 - Nunca chute datas, cotações, ou o conteúdo de arquivos — chame a ferramenta.

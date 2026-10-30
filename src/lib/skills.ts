@@ -36,6 +36,20 @@ export const BUILTIN_SKILLS: Skill[] = [
     instructions:
       "Quando o senhor pedir para escrever num programa do computador (Word, Bloco de Notas, e-mail, WhatsApp): 1) abra o app com open_app se não estiver aberto; 2) avise em uma frase para ele clicar onde o texto deve entrar; 3) use type_text com o texto completo e, se pedido, keys 'enter' ou 'ctrl+s'. Requer bridge conectada.",
   },
+  {
+    id: "video",
+    name: "Criar/editar vídeo (Remotion)",
+    builtin: true,
+    instructions:
+      "Para vídeos de até 30s (renderizados GRÁTIS na máquina do senhor, requer bridge + Node 18+ + Python): " +
+      "1) Escreva um roteiro curto em pt-BR (cenas de 3-6s, total <= 30s) e confirme em 1 frase. " +
+      "2) Use build_project com um projeto Remotion completo: package.json (remotion, @remotion/cli, react, react-dom; script \"render\": \"remotion render src/index.ts Main out/video.mp4\"), src/index.ts (registerRoot), src/Root.tsx (Composition 'Main', 30fps, 1080x1920 vertical salvo pedido diferente, durationInFrames = segundos*30), src/Main.tsx com <Sequence> por cena e <Audio src={staticFile('narracao.mp3')}/>. " +
+      "Movimento fluido: spring() e interpolate() com easing em entradas, saídas, escala, parallax e textos palavra por palavra (estilo hyperframe/kinetic typography). " +
+      "Avatar narrador: um boneco em SVG/React (cabeça, olhos que piscam, corpo, braços gesticulando) cuja boca abre/fecha sincronizada com a narração usando useAudioData + visualizeAudio de @remotion/media-utils. " +
+      "3) Voz humanizada pt-BR grátis: shell_exec na pasta do projeto: 'pip install edge-tts' e 'edge-tts --voice pt-BR-AntonioNeural --rate=+5% --text \"<roteiro>\" --write-media public/narracao.mp3' (voz feminina: pt-BR-FranciscaNeural ou pt-BR-ThalitaNeural). " +
+      "4) shell_exec 'npm install' e depois 'npm run render' (timeout 300). Ao fim, open_app no arquivo out/video.mp4. " +
+      "Para EDITAR: leia os arquivos com fs_read, altere com fs_write (cenas, cores, textos, duração, voz) e renderize de novo. Nunca exceda 30s.",
+  },
 ];
 
 const CUSTOM_KEY = "jarvis:skills:custom:v1";
@@ -57,7 +71,13 @@ export function loadActiveSkills(): string[] {
   if (typeof window === "undefined") return BUILTIN_SKILLS.map((s) => s.id);
   try {
     const v = localStorage.getItem(ACTIVE_KEY);
-    return v ? JSON.parse(v) : BUILTIN_SKILLS.map((s) => s.id);
+    if (!v) return BUILTIN_SKILLS.map((s) => s.id);
+    const ids: string[] = JSON.parse(v);
+    // Auto-enable built-in skills added after the user's last save.
+    const known: string[] = JSON.parse(localStorage.getItem("jarvis:skills:known:v1") || "[]");
+    const fresh = BUILTIN_SKILLS.map((s) => s.id).filter((id) => !known.includes(id) && !ids.includes(id));
+    localStorage.setItem("jarvis:skills:known:v1", JSON.stringify(BUILTIN_SKILLS.map((s) => s.id)));
+    return known.length ? [...ids, ...fresh] : [...ids, ...fresh.filter((id) => id === "video")];
   } catch {
     return BUILTIN_SKILLS.map((s) => s.id);
   }
