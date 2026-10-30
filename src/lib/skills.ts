@@ -71,7 +71,13 @@ export function loadActiveSkills(): string[] {
   if (typeof window === "undefined") return BUILTIN_SKILLS.map((s) => s.id);
   try {
     const v = localStorage.getItem(ACTIVE_KEY);
-    return v ? JSON.parse(v) : BUILTIN_SKILLS.map((s) => s.id);
+    if (!v) return BUILTIN_SKILLS.map((s) => s.id);
+    const ids: string[] = JSON.parse(v);
+    // Auto-enable built-in skills added after the user's last save.
+    const known: string[] = JSON.parse(localStorage.getItem("jarvis:skills:known:v1") || "[]");
+    const fresh = BUILTIN_SKILLS.map((s) => s.id).filter((id) => !known.includes(id) && !ids.includes(id));
+    localStorage.setItem("jarvis:skills:known:v1", JSON.stringify(BUILTIN_SKILLS.map((s) => s.id)));
+    return known.length ? [...ids, ...fresh] : [...ids, ...fresh.filter((id) => id === "video")];
   } catch {
     return BUILTIN_SKILLS.map((s) => s.id);
   }
