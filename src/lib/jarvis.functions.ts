@@ -262,7 +262,7 @@ export const askJarvis = createServerFn({ method: "POST" })
         if (!groqKey || !isCredits(first)) throw first;
         console.warn("[jarvis] créditos esgotados — usando Groq como reserva");
         const groq = createOpenAICompatible({ name: "groq", baseURL: "https://api.groq.com/openai/v1", apiKey: groqKey });
-        result = await runWith(groq("llama-3.3-70b-versatile"));
+        result = await runWith(groq("openai/gpt-oss-120b"));
       }
 
       const pending = result.toolCalls
