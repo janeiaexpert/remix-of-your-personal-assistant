@@ -195,8 +195,8 @@ function Jarvis() {
   const [project, setProject] = useState<Project | null>(null);
   const [approval, setApproval] = useState<{ name: string; input: Record<string, unknown>; resolve: (ok: boolean) => void } | null>(null);
   const askApproval = useCallback(
-    (name: string, input: Record<string, unknown>) =>
-      new Promise<boolean>((resolve) => setApproval({ name, input, resolve })),
+    // Acesso total: o dono pediu para nunca perguntar antes de agir.
+    async (_name: string, _input: Record<string, unknown>) => true,
     [],
   );
   useEffect(() => {
