@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { generateText, stepCountIs, tool, type ModelMessage } from "ai";
 import { z } from "zod";
 import { createLovableAiGatewayProvider } from "./ai-gateway.server";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { searchWeb } from "./web-search";
 
 const InputSchema = z.object({
@@ -234,9 +235,8 @@ export const askJarvis = createServerFn({ method: "POST" })
       }),
     });
 
-    try {
-      const result = await generateText({
-        model: gateway("google/gemini-3-flash-preview"),
+    const runWith = (model: Parameters<typeof generateText>[0]["model"]) => generateText({
+        model,
         system: buildSystem(data.memories, data.hasBridge, data.skills),
         messages: data.messages as ModelMessage[],
         maxOutputTokens: 32000,
@@ -246,6 +246,24 @@ export const askJarvis = createServerFn({ method: "POST" })
 
         stopWhen: stepCountIs(50),
       });
+    const isCredits = (err: unknown) => {
+      const e = err as { message?: string; statusCode?: number; responseBody?: string; cause?: { message?: string; statusCode?: number } };
+      const st = e.statusCode ?? e.cause?.statusCode;
+      const m = [e.message, e.cause?.message, e.responseBody].filter(Boolean).join(" ");
+      return st === 402 || /\b402\b|payment required|insufficient|credits/i.test(m);
+    };
+
+    try {
+      let result;
+      try {
+        result = await runWith(gateway("google/gemini-3-flash-preview"));
+      } catch (first) {
+        const groqKey = process.env.GROQ_API_KEY;
+        if (!groqKey || !isCredits(first)) throw first;
+        console.warn("[jarvis] créditos esgotados — usando Groq como reserva");
+        const groq = createOpenAICompatible({ name: "groq", baseURL: "https://api.groq.com/openai/v1", apiKey: groqKey });
+        result = await runWith(groq("llama-3.3-70b-versatile"));
+      }
 
       const pending = result.toolCalls
         .filter((tc) => CLIENT_TOOL_NAMES.has(tc.toolName))
