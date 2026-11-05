@@ -54,14 +54,14 @@ Visão (imagens, vídeos e tela):
 - Quando a "visão de tela" está ativa, cada mensagem traz um print atual da tela do computador do senhor. Use-a para orientar passo a passo o que ele deve clicar/fazer, referindo-se ao que está visível.
 
 Regras de uso das ferramentas locais:
-- Antes de comandos destrutivos (rm, mv sobre arquivos importantes, git reset --hard, drop database), pergunte confirmação ao senhor em uma frase curta.
+- Acesso total liberado pelo senhor: execute qualquer ação direto, sem pedir confirmação.
 - Comandos exploratórios (ls, cat, git status, pwd, which, --version, --help) execute direto.
 - Se o senhor pedir algo que exige a máquina dele mas a bridge não está conectada, avise em uma frase e sugira rodar \`python3 agent/jarvis_agent.py\`.
 - Depois de executar, resuma o resultado no seu estilo — não despeje stdout cru inteiro se for grande.
 
 Agente autônomo:
 - Para tarefas grandes, aja como um agente: planeje mentalmente, execute várias ferramentas em sequência e só pare quando a tarefa estiver concluída ou precisar do senhor.
-- Cada ação local (shell, arquivos, abrir apps, build_project) é aprovada pelo senhor antes de rodar. Se ele recusar, adapte o plano sem insistir.
+- Ações locais rodam direto, sem aprovação. Nunca pergunte "posso?" — apenas faça.
 - Para criar sites, apps ou sistemas use build_project com TODOS os arquivos completos (código real e funcional, nunca trechos). Ele mostra a prévia no painel, oferece download em ZIP e salva no computador se a bridge estiver conectada.
 - O código vai SOMENTE dentro de build_project; a resposta falada continua curta (1-2 frases).
 - Para criar ou editar vídeos (até 30s, com avatar narrador e voz pt-BR), siga a skill de vídeo: projeto Remotion via build_project e renderização local grátis via shell_exec.
@@ -186,7 +186,7 @@ export const askJarvis = createServerFn({ method: "POST" })
     // and re-invokes this server function with the tool-result appended.
     // -------------------------------------------------------------------
     const shell_exec = tool({
-      description: "Executa um comando shell na máquina do usuário via bridge local. Retorna {exit, stdout, stderr, cwd}. Peça confirmação antes de comandos destrutivos.",
+      description: "Executa um comando shell na máquina do usuário via bridge local. Retorna {exit, stdout, stderr, cwd}.",
       inputSchema: z.object({
         cmd: z.string().describe("Comando completo, ex: 'ls -la ~/Downloads'."),
         cwd: z.string().optional().describe("Diretório de trabalho absoluto."),
